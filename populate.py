@@ -1,3 +1,4 @@
+import random
 from faker import Faker
 import re
 import sqlalchemy
@@ -23,29 +24,34 @@ class populator:
         excluded_tables: list = None,
         graph: bool = True,
     ) -> None:
+        try:
+            db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
+            self.rows = rows
 
-        db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
-        self.rows = rows
+            self.engine = create_engine(db_url, echo=False)
 
-        self.engine = create_engine(db_url, echo=False)
+            inspector = inspect(self.engine)
+            self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
 
-        inspector = inspect(self.engine)
-        self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
-
-        self.arrange_graph()
-        self.fill_table(inspector=inspector)
-        print("[Green]Operation successful!")
-        if graph:
-            self.draw_graph()
+            self.arrange_graph()
+            self.fill_table(inspector=inspector)
+            print("[#00FF00] Operation successful!")
+            if graph:
+                self.draw_graph()
+        except Exception as e:
+            print(f"[#ff0000]Oops, something went wrong!: {e}")
 
     def make_relations(self, inspector, excluded_tables):
         with Progress() as progress:
+            color = self.rnd_color()
             task = progress.add_task(
-                "[cyan]Identifying table relations...", total=100, pulse=True
+                f"[{color}] Identifying table relations...", total=100, pulse=True
             )
 
             table_names = inspector.get_table_names()
-            progress.update(task, description="[cyan]Getting table names", advance=10)
+            progress.update(
+                task, description=f"[{color}] Getting table names", advance=10
+            )
 
             self.inheritance_relations = {}
 
@@ -62,16 +68,16 @@ class populator:
 
                 progress.update(
                     task,
-                    description="[cyan]Tracking foreign relations...",
+                    description=f"[{color}] Tracking foreign relations...",
                     advance=step,
                 )
 
             progress.update(
-                task, description="[cyan]Removing excluded tables...", advance=10
+                task, description=f"[{color}] Removing excluded tables...", advance=10
             )
             self.inheritance_relations.pop(*excluded_tables)
             progress.update(
-                task, description="[cyan]Foreign key relations identified..."
+                task, description="[#00FF00] Foreign key relations identified..."
             )
             return self.inheritance_relations
 
@@ -94,8 +100,9 @@ class populator:
 
     def arrange_graph(self):
         with Progress() as progress:
+            color = self.rnd_color()
             task = progress.add_task(
-                "[cyan]Ordering identified relations...", total=100, pulse=True
+                f"[{color}] Ordering identified relations...", total=100, pulse=True
             )
             graph = nx.DiGraph()
 
@@ -104,7 +111,9 @@ class populator:
                 for inherited_table in inherited_tables:
                     graph.add_edge(inherited_table, table)
                 progress.update(
-                    task, description="[cyan]Establishing connections...", advance=step
+                    task,
+                    description=f"[{color}] Establishing connections...",
+                    advance=step,
                 )
 
             ordered_tables = list(nx.topological_sort(graph))
@@ -115,11 +124,13 @@ class populator:
             for table in ordered_tables:
                 ordered_inheritance_relations[table] = self.inheritance_relations[table]
                 progress.update(
-                    task, description="[cyan]Saving relations...", advance=step
+                    task, description=f"[{color}] Saving relations...", advance=step
                 )
 
             self.inheritance_relations = ordered_inheritance_relations
-            progress.update(task, description="[cyan]Ordered identified relations...")
+            progress.update(
+                task, description="[#00FF00] Ordered identified relations..."
+            )
 
     def get_value(self, column, foreign_keys):
         fake = Faker("en_IN")
@@ -196,22 +207,25 @@ class populator:
 
     def fill_table(self, inspector):
         for table_name in self.inheritance_relations:
+            color = self.rnd_color()
             with Progress() as progress:
                 task = progress.add_task(
-                    f"[cyan]Inserting rows into {table_name}...", total=100, pulse=True
+                    f"[{color}] Inserting rows into {table_name}...",
+                    total=100,
+                    pulse=True,
                 )
                 for _ in range(self.rows):
                     status = self.database_insertion(table_name, inspector)
                     while not status:
                         progress.update(
                             task,
-                            description="[red]An Integrity Error occurred trying again...",
+                            description="[#FF0000] An Integrity Error occurred trying again...",
                         )
                         status = self.database_insertion(table_name, inspector)
 
                     progress.update(
                         task,
-                        description=f"[cyan]Inserting rows into {table_name}...",
+                        description=f"[{color}] Inserting rows into {table_name}...",
                         advance=100 / self.rows,
                     )
 
@@ -229,3 +243,8 @@ class populator:
                 return False
             except Exception as e:
                 raise
+
+    def rnd_color(self):
+        # rgb = [random.randint(100, 255) for _ in range(3)]
+        # return '#{:02x}{:02x}{:02x}'.format(*rgb)
+        return random.choice(["#00ff00", "#91C788"])

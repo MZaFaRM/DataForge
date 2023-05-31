@@ -10,7 +10,7 @@ def main():
     db_database = config("DB_NAME")
     
     # TODO: Modify the below values based on the requirements
-    number_of_fields = 30
+    number_of_fields = 1
     excluded_tables = ["system_setting"]
     graph = True
 
