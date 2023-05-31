@@ -158,7 +158,7 @@ class populator:
         elif "gender" in column_name:
             value = fake.random_element(elements=["Male", "Female"])
         elif "varchar" in str(data_type).lower():
-            value = fake.name()[: data_type.length]
+            value = fake.word().capitalize()[: data_type.length]
         elif "integer" in str(data_type).lower():
             value = fake.random_int(min=0, max=100)
         elif "date" in str(data_type).lower():
