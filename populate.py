@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from rich.progress import Progress
 from rich import print
 
+
 class populator:
     # The populator class is a Python class that populates a MySQL database with fake data based on the
     # table relations and column data types.
@@ -21,7 +22,7 @@ class populator:
 
             inspector = inspect(self.engine)
             self.make_relations(inspector=inspector)
-                
+
             self.arrange_graph()
             self.fill_table(inspector=inspector)
             print("[Green]Operation successful!")
@@ -32,15 +33,17 @@ class populator:
 
     def make_relations(self, inspector):
         with Progress() as progress:
-            task = progress.add_task("[cyan]Identifying table relations...", total=100, pulse=True)
-            
+            task = progress.add_task(
+                "[cyan]Identifying table relations...", total=100, pulse=True
+            )
+
             table_names = inspector.get_table_names()
             progress.update(task, description="[cyan]Getting table names", advance=10)
 
             self.inheritance_relations = {}
             excluded_tables = ["system_setting"]
-            
-            step = 80/len(table_names)
+
+            step = 80 / len(table_names)
 
             for table_name in table_names:
                 foreign_keys = inspector.get_foreign_keys(table_name)
@@ -50,12 +53,20 @@ class populator:
                 }
 
                 self.inheritance_relations[table_name] = list(referred_tables)
-                
-                progress.update(task, description="[cyan]Tracking foreign relations...", advance=step)
 
-            progress.update(task, description="[cyan]Removing excluded tables...", advance=10)
+                progress.update(
+                    task,
+                    description="[cyan]Tracking foreign relations...",
+                    advance=step,
+                )
+
+            progress.update(
+                task, description="[cyan]Removing excluded tables...", advance=10
+            )
             self.inheritance_relations.pop(*excluded_tables)
-            progress.update(task, description="[cyan]Foreign key relations identified...")
+            progress.update(
+                task, description="[cyan]Foreign key relations identified..."
+            )
             return self.inheritance_relations
 
     def draw_graph(self):
@@ -77,23 +88,29 @@ class populator:
 
     def arrange_graph(self):
         with Progress() as progress:
-            task = progress.add_task("[cyan]Ordering identified relations...", total=100, pulse=True)
+            task = progress.add_task(
+                "[cyan]Ordering identified relations...", total=100, pulse=True
+            )
             graph = nx.DiGraph()
 
-            step = 60/len(self.inheritance_relations)
+            step = 60 / len(self.inheritance_relations)
             for table, inherited_tables in self.inheritance_relations.items():
                 for inherited_table in inherited_tables:
                     graph.add_edge(inherited_table, table)
-                progress.update(task, description="[cyan]Establishing connections...", advance=step)
+                progress.update(
+                    task, description="[cyan]Establishing connections...", advance=step
+                )
 
             ordered_tables = list(nx.topological_sort(graph))
 
             ordered_inheritance_relations = OrderedDict()
 
-            step = 40/len(ordered_tables)
+            step = 40 / len(ordered_tables)
             for table in ordered_tables:
                 ordered_inheritance_relations[table] = self.inheritance_relations[table]
-                progress.update(task, description="[cyan]Saving relations...", advance=step)
+                progress.update(
+                    task, description="[cyan]Saving relations...", advance=step
+                )
 
             self.inheritance_relations = ordered_inheritance_relations
             progress.update(task, description="[cyan]Ordered identified relations...")
@@ -174,14 +191,23 @@ class populator:
     def fill_table(self, inspector):
         for table_name in self.inheritance_relations:
             with Progress() as progress:
-                task = progress.add_task(f"[cyan]Inserting rows into {table_name}...", total=100, pulse=True)
+                task = progress.add_task(
+                    f"[cyan]Inserting rows into {table_name}...", total=100, pulse=True
+                )
                 for _ in range(self.rows):
+                    status = self.database_insertion(table_name, inspector)
+                    while not status:
+                        progress.update(
+                            task,
+                            description="[red]An Integrity Error occurred trying again...",
+                        )
                         status = self.database_insertion(table_name, inspector)
-                        while not status:
-                            progress.update(task, description="[red]An Integrity Error occurred trying again...")
-                            status = self.database_insertion(table_name, inspector)
-                            
-                        progress.update(task, description=f"[cyan]Inserting rows into {table_name}...", advance=100/self.rows)
+
+                    progress.update(
+                        task,
+                        description=f"[cyan]Inserting rows into {table_name}...",
+                        advance=100 / self.rows,
+                    )
 
     def database_insertion(self, table_name, inspector):
         metadata = sqlalchemy.MetaData()
