@@ -13,25 +13,32 @@ from rich import print
 class populator:
     # The populator class is a Python class that populates a MySQL database with fake data based on the
     # table relations and column data types.
-    def __init__(self, user, password, host, database, rows, graph=True) -> None:
-        try:
-            db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
-            self.rows = rows
+    def __init__(
+        self,
+        user: str,
+        password: str,
+        host: str,
+        database: str,
+        rows: int,
+        excluded_tables: list = None,
+        graph: bool = True,
+    ) -> None:
 
-            self.engine = create_engine(db_url, echo=False)
+        db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
+        self.rows = rows
 
-            inspector = inspect(self.engine)
-            self.make_relations(inspector=inspector)
+        self.engine = create_engine(db_url, echo=False)
 
-            self.arrange_graph()
-            self.fill_table(inspector=inspector)
-            print("[Green]Operation successful!")
-            if graph:
-                self.draw_graph()
-        except Exception as e:
-            print(f"[Red] Some error occurred: {e}")
+        inspector = inspect(self.engine)
+        self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
 
-    def make_relations(self, inspector):
+        self.arrange_graph()
+        self.fill_table(inspector=inspector)
+        print("[Green]Operation successful!")
+        if graph:
+            self.draw_graph()
+
+    def make_relations(self, inspector, excluded_tables):
         with Progress() as progress:
             task = progress.add_task(
                 "[cyan]Identifying table relations...", total=100, pulse=True
@@ -41,7 +48,6 @@ class populator:
             progress.update(task, description="[cyan]Getting table names", advance=10)
 
             self.inheritance_relations = {}
-            excluded_tables = ["system_setting"]
 
             step = 80 / len(table_names)
 
