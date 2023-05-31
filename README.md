@@ -10,9 +10,11 @@ DataForge is a Python tool that helps you populate databases with test data. It'
    pip install -r requirements.txt
    ```
 
-2. Open the `main.py` file and enter your database connection details and the number of rows you want to insert.
+2. Create and setup the `.env` file with the database connection details by referring to `.env.sample`.
 
-3. Run the `main.py` script to start the data population process.
+3. Configure the `main.py` according to your requirements.
+
+4. Run the `main.py` script to start the data population process.
 
 ### Support
 
