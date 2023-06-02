@@ -344,3 +344,82 @@ class populator:
         # rgb = [random.randint(100, 255) for _ in range(3)]
         # return '#{:02x}{:02x}{:02x}'.format(*rgb)
         return random.choice(["#00ff00", "#91C788"])
+
+
+
+    # def make_relations(self, inspector, excluded_tables):
+    #     """
+    #     The function identifies table relations and tracks foreign key relations while excluding specified
+    #     tables.
+
+    #     :param inspector: an object that can inspect a database schema and retrieve information about its
+    #     tables and relationships
+    #     :param excluded_tables: A list of table names that should be excluded from the inheritance relations
+    #     analysis
+    #     :return: the dictionary of inheritance relations between tables, with excluded tables removed.
+    #     """
+    #     with Progress() as progress:
+    #         color = self.rnd_color()
+    #         task = progress.add_task(
+    #             f"[{color}] Identifying table relations...", total=100, pulse=True
+    #         )
+
+
+    #         table_names = inspector.get_table_names()
+
+    #         progress.update(
+    #             task, description=f"[{color}] Removing excluded tables...", advance=10
+    #         )
+
+    #         for table in excluded_tables:
+    #             table_names.remove(table)
+
+
+    #         self.inheritance_relations = {}
+
+    #         progress.update(
+    #             task, description=f"[{color}] Removing related tables", advance=10
+    #         )
+
+    #         print(table_names)
+            
+    #         excluded_tables = self.filter_tables(table_names, excluded_tables, inspector)
+    #         for table in excluded_tables:
+    #             with contextlib.suppress(ValueError):
+    #                 table_names.remove(table)
+                    
+    #         print(table_names)
+
+    #         step = 80 / len(table_names)
+
+    #         for table_name in table_names:
+    #             foreign_keys = inspector.get_foreign_keys(table_name)
+
+    #             referred_tables = {
+    #                 foreign_key["referred_table"] for foreign_key in foreign_keys
+    #             }
+
+    #             self.inheritance_relations[table_name] = list(referred_tables)
+
+    #             progress.update(
+    #                 task,
+    #                 description=f"[{color}] Tracking foreign relations...",
+    #                 advance=step,
+    #             )
+
+    #         progress.update(
+    #             task, description="[#00FF00] Foreign key relations identified..."
+    #         )
+    #         return self.inheritance_relations
+        
+    # def filter_tables(self, table_names, excluded_tables, inspector):
+    #     for table_name in table_names:
+    #         foreign_keys = inspector.get_foreign_keys(table_name)
+    #         referred_tables = [foreign_key["referred_table"] for foreign_key in foreign_keys]
+                    
+    #         for r_table in referred_tables:
+    #             if r_table in excluded_tables and table_name not in excluded_tables:
+    #                 excluded_tables.append(table_name)  
+    #                 return self.filter_tables(table_names, excluded_tables, inspector)
+                
+    #     return excluded_tables
