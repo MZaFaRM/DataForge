@@ -14,10 +14,10 @@ def main():
     graph = True
     special_fields = [
         {
-            "name": None,
-            "type": "tinyint",
-            "table": None,
-            "value": list(range(2)),
+            "name": None, # * Name of the field, can be Null if it can be ignored
+            "type": "tinyint", # * type of the field, can be Null if it can be ignored
+            "table": None, # * The Table in which the field is, can be Null to apply same to all Table
+            "value": [0, 1], # * Choices of values, a value will be randomly chosen from this list
         },
         {
             "name": "karma",
@@ -41,7 +41,7 @@ def main():
         rows=number_of_fields,  # * Number of rows to insert
         excluded_tables=excluded_tables,  # * Tables to exclude from insertion must be a list
         graph=graph,  # * Whether to show table relation graph at the end must be a python bool
-        special_fields=special_fields,
+        special_fields=special_fields, # * If any special fields
     )
 
 
