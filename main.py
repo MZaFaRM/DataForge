@@ -11,6 +11,7 @@ def main():
     # TODO: Modify the below values based on the requirements
     number_of_fields = 50
     excluded_tables = ["system_setting"]
+    tables_to_fill = ["user"]
     graph = True
     special_fields = [
         {
@@ -40,6 +41,7 @@ def main():
         database=db_database,  # * Database name
         rows=number_of_fields,  # * Number of rows to insert
         excluded_tables=excluded_tables,  # * Tables to exclude from insertion must be a list
+        tables_to_fill=tables_to_fill,  # * Tables to exclude from insertion must be a list
         graph=graph,  # * Whether to show table relation graph at the end must be a python bool
         special_fields=special_fields, # * If any special fields
     )

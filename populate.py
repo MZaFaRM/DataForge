@@ -1,3 +1,5 @@
+import contextlib
+from decimal import DivisionByZero
 from inspect import Parameter
 import random
 from types import NoneType
@@ -24,6 +26,7 @@ class populator:
         database: str,
         rows: int,
         excluded_tables: list = None,
+        tables_to_fill: list = None,
         graph: bool = True,
         special_fields: list[dict] = None,
     ) -> None:
@@ -36,7 +39,11 @@ class populator:
             self.engine = create_engine(db_url, echo=False)
 
             inspector = inspect(self.engine)
-            self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
+            
+            if tables_to_fill:
+                self.make_relations(inspector=inspector, tables_to_fill=tables_to_fill)
+            else: 
+                self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
 
             self.arrange_graph()
             self.fill_table(inspector=inspector)
@@ -44,9 +51,10 @@ class populator:
             if graph:
                 self.draw_graph()
         except Exception as e:
+            raise(e)
             print(f"[#ff0000]Oops, something went wrong!: {e}")
 
-    def make_relations(self, inspector, excluded_tables):
+    def make_relations(self, inspector, excluded_tables :list = None, tables_to_fill :list = None):
         """
         The function identifies table relations and tracks foreign key relations while excluding specified
         tables.
@@ -63,7 +71,8 @@ class populator:
                 f"[{color}] Identifying table relations...", total=100, pulse=True
             )
 
-            table_names = inspector.get_table_names()
+            table_names = tables_to_fill or inspector.get_table_names()
+            
             progress.update(
                 task, description=f"[{color}] Getting table names", advance=10
             )
@@ -90,7 +99,12 @@ class populator:
             progress.update(
                 task, description=f"[{color}] Removing excluded tables...", advance=10
             )
-            self.inheritance_relations.pop(*excluded_tables)
+            
+            if excluded_tables:
+                for table in excluded_tables:
+                    with contextlib.suppress(ValueError):
+                        self.inheritance_relations.pop(table)
+
             progress.update(
                 task, description="[#00FF00] Foreign key relations identified..."
             )
@@ -103,8 +117,11 @@ class populator:
         graph = nx.DiGraph()
 
         for table, inherited_tables in self.inheritance_relations.items():
-            for inherited_table in inherited_tables:
-                graph.add_edge(inherited_table, table)
+            if inherited_tables:
+                for inherited_table in inherited_tables:
+                    graph.add_edge(inherited_table, table)
+            else:
+                graph.add_node(table)
 
         plt.figure(figsize=(12, 8))
         pos = nx.shell_layout(graph)
@@ -130,8 +147,11 @@ class populator:
 
             step = 60 / len(self.inheritance_relations)
             for table, inherited_tables in self.inheritance_relations.items():
-                for inherited_table in inherited_tables:
-                    graph.add_edge(inherited_table, table)
+                if inherited_tables:
+                    for inherited_table in inherited_tables:
+                        graph.add_edge(inherited_table, table)
+                else:
+                    graph.add_node(table)
                 progress.update(
                     task,
                     description=f"[{color}] Establishing connections...",
@@ -142,9 +162,9 @@ class populator:
 
             ordered_inheritance_relations = OrderedDict()
 
-            step = 40 / len(ordered_tables)
             for table in ordered_tables:
-                ordered_inheritance_relations[table] = self.inheritance_relations[table]
+                if table in self.inheritance_relations:
+                    ordered_inheritance_relations[table] = self.inheritance_relations[table]
                 progress.update(
                     task, description=f"[{color}] Saving relations...", advance=step
                 )
@@ -153,7 +173,7 @@ class populator:
             progress.update(
                 task, description="[#00FF00] Ordered identified relations..."
             )
-
+    
     def populate_special_fields(self, table_name):
         for field in self.special_fields:
             if (
