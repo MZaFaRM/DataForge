@@ -9,9 +9,9 @@ def main():
     db_database = config("DB_NAME")
 
     # TODO: Modify the below values based on the requirements
-    number_of_fields = 50
+    number_of_fields = 300
     excluded_tables = ["system_setting"]
-    tables_to_fill = ["user"]
+    tables_to_fill = ["user_organization_link"]
     graph = True
     special_fields = [
         {
@@ -30,7 +30,7 @@ def main():
             "name": "org_type",
             "type": None,
             "table": "organization",
-            "value": ["College", "Company", "Community"],
+            "value": ["College"],
         },
     ]
 

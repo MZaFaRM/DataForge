@@ -51,8 +51,8 @@ class populator:
             if graph:
                 self.draw_graph()
         except Exception as e:
-            raise(e)
-            print(f"[#ff0000]Oops, something went wrong!: {e}")
+            print("[#ff0000]Oops, something went wrong!")
+            raise e
 
     def make_relations(self, inspector, excluded_tables :list = None, tables_to_fill :list = None):
         """
