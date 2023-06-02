@@ -9,10 +9,22 @@ def main():
     db_database = config("DB_NAME")
 
     # TODO: Modify the below values based on the requirements
-    number_of_fields = 1
+    number_of_fields = 50
     excluded_tables = ["system_setting"]
     graph = True
     special_fields = [
+        {
+            "name": None,
+            "type": "tinyint",
+            "table": None,
+            "value": list(range(2)),
+        },
+        {
+            "name": "karma",
+            "type": None,
+            "table": None,
+            "value": list(range(9999999)),
+        },
         {
             "name": "org_type",
             "type": None,

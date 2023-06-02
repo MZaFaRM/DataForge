@@ -1,4 +1,6 @@
+from inspect import Parameter
 import random
+from types import NoneType
 from faker import Faker
 import re
 import sqlalchemy
@@ -42,7 +44,6 @@ class populator:
             if graph:
                 self.draw_graph()
         except Exception as e:
-            raise Exception(e)
             print(f"[#ff0000]Oops, something went wrong!: {e}")
 
     def make_relations(self, inspector, excluded_tables):
@@ -154,25 +155,22 @@ class populator:
             )
 
     def populate_special_fields(self, table_name):
-        """
-        This function populates special fields in a table based on certain conditions.
-        
-        :param table_name: The name of the table in the database that the special fields should be populated
-        for
-        :return: the value of the "value" key in the dictionary of the first special field that matches any
-        of the following conditions:
-        - The "name" key in the special field dictionary is equal to the "name" key in the column dictionary
-        of the current instance.
-        - The "type" key in the special field dictionary is equal to the "type" key in the column dictionary
-        of
-        """
         for field in self.special_fields:
             if (
-                field["name"] == self.column["name"]
-                or field["type"] == self.column["type"]
-                and bool(field["table"] and field["table"] == table_name)
+                self.compare_column_with(field["name"], "name")
+                or self.compare_column_with(field["type"], "type")
+                and (
+                    True
+                    if (field.get("table") and field["table"] == table_name)
+                    else not field.get("table")
+                )
             ):
-                return self.fake.random_element(elements=field["value"])
+                value = self.fake.random_element(elements=field["value"])
+                if value is not None:
+                    return value
+
+        return None
+
 
     def get_value_from_column_name(self):
         """
@@ -200,12 +198,12 @@ class populator:
         elif self.compare_column_with("gender", "name"):
             return self.fake.random_element(elements=["Male", "Female"])
 
-        return False
+        return None
 
     def generate_fake_data(self, type):
         """
         This function generates fake data based on the specified type using the Python Faker library.
-        
+
         :param type: The "type" parameter is a string that specifies the type of fake data to be generated.
         It is used to dynamically call a method from the "fake" object (which is an instance of the Faker
         library) to generate the desired type of fake data. The method is called using the "eval
@@ -220,7 +218,10 @@ class populator:
             return eval(f"self.fake.{type}")
 
     def compare_column_with(self, data, type):
-        return data in str(self.column[type]).lower()
+        try:
+            return data in str(self.column[type]).lower()
+        except TypeError:
+            return False
 
     def get_value_from_data_type(self):
         if self.compare_column_with("varchar", "type"):
@@ -231,8 +232,8 @@ class populator:
         elif self.compare_column_with("datetime", "type"):
             return self.generate_fake_data("date_time()")
 
-        elif self.compare_column_with("integer", "type"):
-            return self.fake.random_int(min=0, max=100)
+        elif self.compare_column_with("boolean", "type"):
+            return self.fake.boolean()
         elif self.compare_column_with("tinyint", "type"):
             return self.fake.random_int(min=-128, max=127)
         elif self.compare_column_with("bigint", "type"):
@@ -240,18 +241,28 @@ class populator:
                 min=-9223372036854775808, max=9223372036854775807
             )
 
-        return False
+        elif self.compare_column_with("integer", "type"):
+            return self.fake.random_int(min=0, max=100)
+
+        return None
 
     def get_value(self, column, foreign_keys, table_name):
         self.column = column
 
-        return (
-            self.populate_special_fields(table_name)
-            or self.process_foreign(foreign_keys)
-            or self.get_value_from_column_name()
-            or self.get_value_from_data_type()
-            or None
-        )
+        methods = [
+            (self.populate_special_fields, (table_name,)),
+            (self.process_foreign, (foreign_keys,)),
+            (self.get_value_from_column_name, ()),
+            (self.get_value_from_data_type, ())
+        ]
+
+        value = None
+        for method, args in methods:
+            value = method(*args)
+            if value is not None:
+                break
+
+        return value
 
     def process_foreign(self, foreign_keys):
         if self.column["name"] in foreign_keys:
@@ -271,7 +282,7 @@ class populator:
 
             return self.fake.random_element(elements=items)
 
-        return False
+        return None
 
     def process_row_data(self, inspector, table_name):
         columns = inspector.get_columns(table_name)
