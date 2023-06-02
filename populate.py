@@ -23,10 +23,13 @@ class populator:
         rows: int,
         excluded_tables: list = None,
         graph: bool = True,
+        special_fields: list[dict] = None,
     ) -> None:
         try:
             db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
             self.rows = rows
+            self.special_fields = special_fields
+            self.fake = Faker("en_IN")
 
             self.engine = create_engine(db_url, echo=False)
 
@@ -39,9 +42,20 @@ class populator:
             if graph:
                 self.draw_graph()
         except Exception as e:
+            raise Exception(e)
             print(f"[#ff0000]Oops, something went wrong!: {e}")
 
     def make_relations(self, inspector, excluded_tables):
+        """
+        The function identifies table relations and tracks foreign key relations while excluding specified
+        tables.
+
+        :param inspector: an object that can inspect a database schema and retrieve information about its
+        tables and relationships
+        :param excluded_tables: A list of table names that should be excluded from the inheritance relations
+        analysis
+        :return: the dictionary of inheritance relations between tables, with excluded tables removed.
+        """
         with Progress() as progress:
             color = self.rnd_color()
             task = progress.add_task(
@@ -82,6 +96,9 @@ class populator:
             return self.inheritance_relations
 
     def draw_graph(self):
+        """
+        This function draws a graph to visualize the inheritance relationships between tables in a database.
+        """
         graph = nx.DiGraph()
 
         for table, inherited_tables in self.inheritance_relations.items():
@@ -99,6 +116,10 @@ class populator:
         plt.show()
 
     def arrange_graph(self):
+        """
+        The function arranges identified inheritance relations in a directed graph and orders them
+        topologically.
+        """
         with Progress() as progress:
             color = self.rnd_color()
             task = progress.add_task(
@@ -132,62 +153,125 @@ class populator:
                 task, description="[#00FF00] Ordered identified relations..."
             )
 
-    def get_value(self, column, foreign_keys):
-        fake = Faker("en_IN")
-        column_name = column["name"]
-        data_type = column["type"]
+    def populate_special_fields(self, table_name):
+        """
+        This function populates special fields in a table based on certain conditions.
+        
+        :param table_name: The name of the table in the database that the special fields should be populated
+        for
+        :return: the value of the "value" key in the dictionary of the first special field that matches any
+        of the following conditions:
+        - The "name" key in the special field dictionary is equal to the "name" key in the column dictionary
+        of the current instance.
+        - The "type" key in the special field dictionary is equal to the "type" key in the column dictionary
+        of
+        """
+        for field in self.special_fields:
+            if (
+                field["name"] == self.column["name"]
+                or field["type"] == self.column["type"]
+                and bool(field["table"] and field["table"] == table_name)
+            ):
+                return self.fake.random_element(elements=field["value"])
 
-        pattern = re.compile(r"(\bid)|(_id)|(id_)", re.IGNORECASE)
+    def get_value_from_column_name(self):
+        """
+        This function returns fake data based on the column name.
+        :return: either a generated fake data value based on the column name or False if none of the
+        conditions are met.
+        """
 
-        if column_name in foreign_keys:
-            value = self.process_foreign(foreign_keys, column_name, fake)
-        elif re.search(pattern, column_name):
-            value = fake.uuid4()
-        elif "first_name" in column_name:
-            value = fake.first_name()[: data_type.length]
-        elif "last_name" in column_name:
-            value = fake.last_name()[: data_type.length]
-        elif "description" in column_name:
-            value = fake.sentence()[: data_type.length]
-        elif "email" in column_name:
-            value = fake.email()[: data_type.length]
-        elif "password" in column_name:
-            value = fake.password()[: data_type.length]
-        elif "mobile" in column_name:
-            value = fake.phone_number()[: data_type.length]
-        elif "gender" in column_name:
-            value = fake.random_element(elements=["Male", "Female"])
-        elif "varchar" in str(data_type).lower():
-            value = fake.word().capitalize()[: data_type.length]
-        elif "integer" in str(data_type).lower():
-            value = fake.random_int(min=0, max=100)
-        elif "date" in str(data_type).lower():
-            value = fake.date()
-        elif "datetime" in str(data_type).lower():
-            value = fake.date_time()
-        elif "tinyint" in str(data_type).lower():
-            value = fake.random_element(elements=[0, 1])
-        elif "bigint" in str(data_type).lower():
-            value = fake.random_int(min=0, max=1000)
+        if re.search(
+            re.compile(r"(\bid)|(_id)|(id_)", re.IGNORECASE), self.column["name"]
+        ):
+            return self.fake.uuid4()
+        elif self.compare_column_with("first_name", "name"):
+            return self.generate_fake_data("first_name()")
+        elif self.compare_column_with("last_name", "name"):
+            return self.generate_fake_data("last_name()")
+        elif self.compare_column_with("description", "name"):
+            return self.generate_fake_data("sentence()")
+        elif self.compare_column_with("email", "name"):
+            return self.generate_fake_data("email()")
+        elif self.compare_column_with("password", "name"):
+            return self.generate_fake_data("password()")
+        elif self.compare_column_with("mobile", "name"):
+            return self.generate_fake_data("phone_number()")
+        elif self.compare_column_with("gender", "name"):
+            return self.fake.random_element(elements=["Male", "Female"])
 
-        return value
+        return False
 
-    def process_foreign(self, foreign_keys, column_name, fake):
-        desc = foreign_keys[column_name]
-        metadata = sqlalchemy.MetaData()
-        metadata.reflect(bind=self.engine, only=[desc[1]])
-        related_table = metadata.tables[desc[1]]
+    def generate_fake_data(self, type):
+        """
+        This function generates fake data based on the specified type using the Python Faker library.
+        
+        :param type: The "type" parameter is a string that specifies the type of fake data to be generated.
+        It is used to dynamically call a method from the "fake" object (which is an instance of the Faker
+        library) to generate the desired type of fake data. The method is called using the "eval
+        :return: The function `generate_fake_data` returns either a subset of fake data of the specified
+        type (if the length of the subset is less than or equal to the length of the column of that type),
+        or all the fake data of the specified type (if the length of the subset is greater than the length
+        of the column of that type). The fake data is generated using the `fake` attribute of self
+        """
+        try:
+            return eval(f"self.fake.{type}")[: self.column["type"].length]
+        except AttributeError:
+            return eval(f"self.fake.{type}")
 
-        s = sqlalchemy.select(related_table.c[desc[0]])
-        conn = self.engine.connect()
-        result = conn.execute(s).fetchall()
-        conn.close()
+    def compare_column_with(self, data, type):
+        return data in str(self.column[type]).lower()
 
-        items = [row[0] for row in result]
-        referred_items = result
-        items = [item[0] for item in referred_items]
+    def get_value_from_data_type(self):
+        if self.compare_column_with("varchar", "type"):
+            return self.generate_fake_data("word()").capitalize()
 
-        return fake.random_element(elements=items)
+        elif self.compare_column_with("date", "type"):
+            return self.generate_fake_data("date()")
+        elif self.compare_column_with("datetime", "type"):
+            return self.generate_fake_data("date_time()")
+
+        elif self.compare_column_with("integer", "type"):
+            return self.fake.random_int(min=0, max=100)
+        elif self.compare_column_with("tinyint", "type"):
+            return self.fake.random_int(min=-128, max=127)
+        elif self.compare_column_with("bigint", "type"):
+            return self.fake.random_int(
+                min=-9223372036854775808, max=9223372036854775807
+            )
+
+        return False
+
+    def get_value(self, column, foreign_keys, table_name):
+        self.column = column
+
+        return (
+            self.populate_special_fields(table_name)
+            or self.process_foreign(foreign_keys)
+            or self.get_value_from_column_name()
+            or self.get_value_from_data_type()
+            or None
+        )
+
+    def process_foreign(self, foreign_keys):
+        if self.column["name"] in foreign_keys:
+            desc = foreign_keys[self.column["name"]]
+            metadata = sqlalchemy.MetaData()
+            metadata.reflect(bind=self.engine, only=[desc[1]])
+            related_table = metadata.tables[desc[1]]
+
+            s = sqlalchemy.select(related_table.c[desc[0]])
+            conn = self.engine.connect()
+            result = conn.execute(s).fetchall()
+            conn.close()
+
+            items = [row[0] for row in result]
+            referred_items = result
+            items = [item[0] for item in referred_items]
+
+            return self.fake.random_element(elements=items)
+
+        return False
 
     def process_row_data(self, inspector, table_name):
         columns = inspector.get_columns(table_name)
@@ -202,7 +286,8 @@ class populator:
         }
 
         return {
-            column["name"]: self.get_value(column, foreign_keys) for column in columns
+            column["name"]: self.get_value(column, foreign_keys, table_name)
+            for column in columns
         }
 
     def fill_table(self, inspector):
