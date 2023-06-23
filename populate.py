@@ -271,7 +271,7 @@ class populator:
 
         methods = [
             (self.populate_special_fields, (table_name,)),
-            (self.process_foreign, (foreign_keys,)),
+            (self.process_foreign, (foreign_keys, table_name)),
             (self.get_value_from_column_name, ()),
             (self.get_value_from_data_type, ())
         ]
@@ -284,23 +284,38 @@ class populator:
 
         return value
 
-    def process_foreign(self, foreign_keys):
+    def process_foreign(self, foreign_keys, table_name):
         if self.column["name"] in foreign_keys:
             desc = foreign_keys[self.column["name"]]
             metadata = sqlalchemy.MetaData()
             metadata.reflect(bind=self.engine, only=[desc[1]])
             related_table = metadata.tables[desc[1]]
+            conn = self.engine.connect()
 
             s = sqlalchemy.select(related_table.c[desc[0]])
-            conn = self.engine.connect()
             result = conn.execute(s).fetchall()
-            conn.close()
 
             items = [row[0] for row in result]
-            referred_items = result
-            items = [item[0] for item in referred_items]
-
-            return self.fake.random_element(elements=items)
+            
+            column_metadata = related_table.c[desc[0]]
+            unique_constraint = column_metadata.unique
+            
+            unique_rows = []
+            
+            if unique_constraint:
+                s = sqlalchemy.select(table_name.c[self.column["name"]])       
+                result = conn.execute(s).fetchall()
+                unique_rows = [row[0] for row in result]
+                
+                if len(unique_rows) == len(items):
+                    raise ValueError("Exhausted Choices")
+                
+            conn.close()
+            random_element = self.fake.random_element(elements=items)
+            
+            while random_element in unique_rows:
+                random_element = self.fake.random_element(element=items)
+            return random_element
 
         return None
 
