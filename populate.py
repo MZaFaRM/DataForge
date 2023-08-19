@@ -1,8 +1,5 @@
 import contextlib
-from decimal import DivisionByZero
-from inspect import Parameter
 import random
-from types import NoneType
 from faker import Faker
 import re
 import sqlalchemy
@@ -39,11 +36,13 @@ class populator:
             self.engine = create_engine(db_url, echo=False)
 
             inspector = inspect(self.engine)
-            
+
             if tables_to_fill:
                 self.make_relations(inspector=inspector, tables_to_fill=tables_to_fill)
-            else: 
-                self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
+            else:
+                self.make_relations(
+                    inspector=inspector, excluded_tables=excluded_tables
+                )
 
             self.arrange_graph()
             self.fill_table(inspector=inspector)
@@ -54,7 +53,9 @@ class populator:
             print("[#ff0000]Oops, something went wrong!")
             raise e
 
-    def make_relations(self, inspector, excluded_tables :list = None, tables_to_fill :list = None):
+    def make_relations(
+        self, inspector, excluded_tables: list = None, tables_to_fill: list = None
+    ):
         """
         The function identifies table relations and tracks foreign key relations while excluding specified
         tables.
@@ -72,7 +73,7 @@ class populator:
             )
 
             table_names = tables_to_fill or inspector.get_table_names()
-            
+
             progress.update(
                 task, description=f"[{color}] Getting table names", advance=10
             )
@@ -99,7 +100,7 @@ class populator:
             progress.update(
                 task, description=f"[{color}] Removing excluded tables...", advance=10
             )
-            
+
             if excluded_tables:
                 for table in excluded_tables:
                     with contextlib.suppress(ValueError):
@@ -164,7 +165,9 @@ class populator:
 
             for table in ordered_tables:
                 if table in self.inheritance_relations:
-                    ordered_inheritance_relations[table] = self.inheritance_relations[table]
+                    ordered_inheritance_relations[table] = self.inheritance_relations[
+                        table
+                    ]
                 progress.update(
                     task, description=f"[{color}] Saving relations...", advance=step
                 )
@@ -173,8 +176,8 @@ class populator:
             progress.update(
                 task, description="[#00FF00] Ordered identified relations..."
             )
-    
-    def populate_special_fields(self, table_name):
+
+    def populate_fields(self, table_name):
         for field in self.special_fields:
             if (
                 self.compare_column_with(field["name"], "name")
@@ -185,139 +188,81 @@ class populator:
                     else not field.get("table")
                 )
             ):
-                value = self.fake.random_element(elements=field["value"])
+                value = (
+                    field["generator"]()
+                    if callable(field["generator"])
+                    else field["generator"]
+                )
+
                 if value is not None:
-                    return value
+                    try:
+                        return value[: self.column["type"].length]
+                    except AttributeError:
+                        return value
 
         return None
 
-
-    def get_value_from_column_name(self):
-        """
-        This function returns fake data based on the column name.
-        :return: either a generated fake data value based on the column name or False if none of the
-        conditions are met.
-        """
-
-        if re.search(
-            re.compile(r"(\bid)|(_id)|(id_)", re.IGNORECASE), self.column["name"]
-        ):
-            return self.fake.uuid4()
-        elif self.compare_column_with("first_name", "name"):
-            return self.generate_fake_data("first_name()")
-        elif self.compare_column_with("last_name", "name"):
-            return self.generate_fake_data("last_name()")
-        elif self.compare_column_with("description", "name"):
-            return self.generate_fake_data("sentence()")
-        elif self.compare_column_with("email", "name"):
-            return self.generate_fake_data("email()")
-        elif self.compare_column_with("password", "name"):
-            return self.generate_fake_data("password()")
-        elif self.compare_column_with("mobile", "name"):
-            return self.generate_fake_data("phone_number()")
-        elif self.compare_column_with("gender", "name"):
-            return self.fake.random_element(elements=["Male", "Female"])
-
-        return None
-
-    def generate_fake_data(self, type):
-        """
-        This function generates fake data based on the specified type using the Python Faker library.
-
-        :param type: The "type" parameter is a string that specifies the type of fake data to be generated.
-        It is used to dynamically call a method from the "fake" object (which is an instance of the Faker
-        library) to generate the desired type of fake data. The method is called using the "eval
-        :return: The function `generate_fake_data` returns either a subset of fake data of the specified
-        type (if the length of the subset is less than or equal to the length of the column of that type),
-        or all the fake data of the specified type (if the length of the subset is greater than the length
-        of the column of that type). The fake data is generated using the `fake` attribute of self
-        """
+    def is_valid_regex(self, pattern):
         try:
-            return eval(f"self.fake.{type}")[: self.column["type"].length]
-        except AttributeError:
-            return eval(f"self.fake.{type}")
-
-    def compare_column_with(self, data, type):
-        try:
-            return data in str(self.column[type]).lower()
-        except TypeError:
+            re.compile(pattern)
+            return True
+        except re.error:
             return False
 
-    def get_value_from_data_type(self):
-        if self.compare_column_with("varchar", "type"):
-            return self.generate_fake_data("word()").capitalize()
-
-        elif self.compare_column_with("date", "type"):
-            return self.generate_fake_data("date()")
-        elif self.compare_column_with("datetime", "type"):
-            return self.generate_fake_data("date_time()")
-
-        elif self.compare_column_with("boolean", "type"):
-            return self.fake.boolean()
-        elif self.compare_column_with("tinyint", "type"):
-            return self.fake.random_int(min=-128, max=127)
-        elif self.compare_column_with("bigint", "type"):
-            return self.fake.random_int(
-                min=-9223372036854775808, max=9223372036854775807
-            )
-
-        elif self.compare_column_with("integer", "type"):
-            return self.fake.random_int(min=0, max=100)
-
-        return None
+    def compare_column_with(self, data, type):
+        if data:
+            if self.is_valid_regex(data):
+                return re.search(data, str(self.column[type]), re.IGNORECASE)
+            return data in str(self.column[type]).lower()
+        else:
+            return False
 
     def get_value(self, column, foreign_keys, table_name):
         self.column = column
 
-        methods = [
-            (self.populate_special_fields, (table_name,)),
-            (self.process_foreign, (foreign_keys, table_name)),
-            (self.get_value_from_column_name, ()),
-            (self.get_value_from_data_type, ())
-        ]
-
-        value = None
-        for method, args in methods:
-            value = method(*args)
-            if value is not None:
-                break
-
-        return value
+        value = self.populate_fields(table_name)
+        if value is not None:
+            return value
+        value = self.process_foreign(foreign_keys, table_name)
+        if value is not None:
+            return value
+        else:
+            raise NotImplementedError("Can you please raise an issue on github?")
 
     def process_foreign(self, foreign_keys, table_name):
-        if self.column["name"] in foreign_keys:
-            desc = foreign_keys[self.column["name"]]
-            metadata = sqlalchemy.MetaData()
-            metadata.reflect(bind=self.engine, only=[desc[1]])
-            related_table = metadata.tables[desc[1]]
-            conn = self.engine.connect()
+        if self.column["name"] not in foreign_keys:
+            return None
 
-            s = sqlalchemy.select(related_table.c[desc[0]])
+        desc = foreign_keys[self.column["name"]]
+        metadata = sqlalchemy.MetaData()
+        metadata.reflect(bind=self.engine, only=[desc[1]])
+        related_table = metadata.tables[desc[1]]
+        conn = self.engine.connect()
+
+        s = sqlalchemy.select(related_table.c[desc[0]])
+        result = conn.execute(s).fetchall()
+
+        items = [row[0] for row in result]
+
+        column_metadata = related_table.c[desc[0]]
+        unique_constraint = column_metadata.unique
+
+        unique_rows = []
+
+        if unique_constraint:
+            s = sqlalchemy.select(table_name.c[self.column["name"]])
             result = conn.execute(s).fetchall()
+            unique_rows = [row[0] for row in result]
 
-            items = [row[0] for row in result]
-            
-            column_metadata = related_table.c[desc[0]]
-            unique_constraint = column_metadata.unique
-            
-            unique_rows = []
-            
-            if unique_constraint:
-                s = sqlalchemy.select(table_name.c[self.column["name"]])       
-                result = conn.execute(s).fetchall()
-                unique_rows = [row[0] for row in result]
-                
-                if len(unique_rows) == len(items):
-                    raise ValueError("Exhausted Choices")
-                
-            conn.close()
-            random_element = self.fake.random_element(elements=items)
-            
-            while random_element in unique_rows:
-                random_element = self.fake.random_element(element=items)
-            return random_element
+            if len(unique_rows) == len(items):
+                raise ValueError("Exhausted Choices")
 
-        return None
+        conn.close()
+        random_element = self.fake.random_element(elements=items)
+
+        while random_element in unique_rows:
+            random_element = self.fake.random_element(element=items)
+        return random_element
 
     def process_row_data(self, inspector, table_name):
         columns = inspector.get_columns(table_name)
@@ -365,6 +310,7 @@ class populator:
         metadata.reflect(bind=self.engine, only=[table_name])
         table = metadata.tables[table_name]
         row_data = self.process_row_data(inspector, table_name)
+        row_data
 
         with self.engine.begin() as connection:
             try:
@@ -379,82 +325,3 @@ class populator:
         # rgb = [random.randint(100, 255) for _ in range(3)]
         # return '#{:02x}{:02x}{:02x}'.format(*rgb)
         return random.choice(["#00ff00", "#91C788"])
-
-
-
-    # def make_relations(self, inspector, excluded_tables):
-    #     """
-    #     The function identifies table relations and tracks foreign key relations while excluding specified
-    #     tables.
-
-    #     :param inspector: an object that can inspect a database schema and retrieve information about its
-    #     tables and relationships
-    #     :param excluded_tables: A list of table names that should be excluded from the inheritance relations
-    #     analysis
-    #     :return: the dictionary of inheritance relations between tables, with excluded tables removed.
-    #     """
-    #     with Progress() as progress:
-    #         color = self.rnd_color()
-    #         task = progress.add_task(
-    #             f"[{color}] Identifying table relations...", total=100, pulse=True
-    #         )
-
-
-    #         table_names = inspector.get_table_names()
-
-    #         progress.update(
-    #             task, description=f"[{color}] Removing excluded tables...", advance=10
-    #         )
-
-    #         for table in excluded_tables:
-    #             table_names.remove(table)
-
-
-    #         self.inheritance_relations = {}
-
-    #         progress.update(
-    #             task, description=f"[{color}] Removing related tables", advance=10
-    #         )
-
-    #         print(table_names)
-            
-    #         excluded_tables = self.filter_tables(table_names, excluded_tables, inspector)
-    #         for table in excluded_tables:
-    #             with contextlib.suppress(ValueError):
-    #                 table_names.remove(table)
-                    
-    #         print(table_names)
-
-    #         step = 80 / len(table_names)
-
-    #         for table_name in table_names:
-    #             foreign_keys = inspector.get_foreign_keys(table_name)
-
-    #             referred_tables = {
-    #                 foreign_key["referred_table"] for foreign_key in foreign_keys
-    #             }
-
-    #             self.inheritance_relations[table_name] = list(referred_tables)
-
-    #             progress.update(
-    #                 task,
-    #                 description=f"[{color}] Tracking foreign relations...",
-    #                 advance=step,
-    #             )
-
-    #         progress.update(
-    #             task, description="[#00FF00] Foreign key relations identified..."
-    #         )
-    #         return self.inheritance_relations
-        
-    # def filter_tables(self, table_names, excluded_tables, inspector):
-    #     for table_name in table_names:
-    #         foreign_keys = inspector.get_foreign_keys(table_name)
-    #         referred_tables = [foreign_key["referred_table"] for foreign_key in foreign_keys]
-                    
-    #         for r_table in referred_tables:
-    #             if r_table in excluded_tables and table_name not in excluded_tables:
-    #                 excluded_tables.append(table_name)  
-    #                 return self.filter_tables(table_names, excluded_tables, inspector)
-                
-    #     return excluded_tables

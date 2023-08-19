@@ -1,7 +1,7 @@
 Faker==18.9.0
-matplotlib==3.7.1
+matplotlib==3.7.2
 networkx==3.1
 python-decouple==3.8
-rich==13.4.1
-SQLAlchemy==2.0.15
-mysql-connector-python==8.0.33
+rich==13.5.2
+SQLAlchemy==2.0.20
+mysql-connector-python==8.1.0
