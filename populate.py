@@ -1,7 +1,9 @@
 import contextlib
 import random
+import time
 from faker import Faker
 import re
+from pyparsing import col
 import sqlalchemy
 from sqlalchemy import create_engine, inspect
 import networkx as nx
@@ -10,6 +12,8 @@ from collections import OrderedDict
 from sqlalchemy.exc import IntegrityError
 from rich.progress import Progress
 from rich import print
+from sqlalchemy_utils import has_unique_index
+from sqlalchemy import text
 
 
 class populator:
@@ -27,31 +31,23 @@ class populator:
         graph: bool = True,
         special_fields: list[dict] = None,
     ) -> None:
-        try:
-            db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
-            self.rows = rows
-            self.special_fields = special_fields
-            self.fake = Faker("en_IN")
+        db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
+        self.rows = rows
+        self.special_fields = special_fields
 
-            self.engine = create_engine(db_url, echo=False)
+        self.engine = create_engine(db_url, echo=False)
+        inspector = inspect(self.engine)
 
-            inspector = inspect(self.engine)
+        if tables_to_fill:
+            self.make_relations(inspector=inspector, tables_to_fill=tables_to_fill)
+        else:
+            self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
 
-            if tables_to_fill:
-                self.make_relations(inspector=inspector, tables_to_fill=tables_to_fill)
-            else:
-                self.make_relations(
-                    inspector=inspector, excluded_tables=excluded_tables
-                )
-
-            self.arrange_graph()
-            self.fill_table(inspector=inspector)
-            print("[#00FF00] Operation successful!")
-            if graph:
-                self.draw_graph()
-        except Exception as e:
-            print("[#ff0000]Oops, something went wrong!")
-            raise e
+        self.arrange_graph()
+        self.fill_table(inspector=inspector)
+        print("[#00FF00] Operation successful!")
+        if graph:
+            self.draw_graph()
 
     def make_relations(
         self, inspector, excluded_tables: list = None, tables_to_fill: list = None
@@ -177,14 +173,14 @@ class populator:
                 task, description="[#00FF00] Ordered identified relations..."
             )
 
-    def populate_fields(self, table_name):
+    def populate_fields(self, column, table):
         for field in self.special_fields:
             if (
-                self.compare_column_with(field["name"], "name")
-                or self.compare_column_with(field["type"], "type")
+                self.compare_column_with(column, field["name"], "name")
+                or self.compare_column_with(column, field["type"], "type")
                 and (
                     True
-                    if (field.get("table") and field["table"] == table_name)
+                    if (field.get("table") and field["table"] == table.name)
                     else not field.get("table")
                 )
             ):
@@ -196,7 +192,7 @@ class populator:
 
                 if value is not None:
                     try:
-                        return value[: self.column["type"].length]
+                        return str(value)[: column.type.length]
                     except AttributeError:
                         return value
 
@@ -209,117 +205,182 @@ class populator:
         except re.error:
             return False
 
-    def compare_column_with(self, data, type):
+    def compare_column_with(self, column, data, type):
         if data:
             if self.is_valid_regex(data):
-                return re.search(data, str(self.column[type]), re.IGNORECASE)
+                return re.search(data, str(getattr(column, type)), re.IGNORECASE)
             return data in str(self.column[type]).lower()
         else:
             return False
 
-    def get_value(self, column, foreign_keys, table_name):
-        self.column = column
+    def handle_column_population(self, table, column):
+        tried_values = set()
+        value = self.populate_fields(column, table)
+        count = 30
+        while value in self.existing_values or value in tried_values:
+            tried_values.add(value)
+            value = self.populate_fields(column, table)
+            print(f"Trying {value}, attempt number {count}")
+            count -= 1
+            if count <= 0:
+                raise ValueError(
+                    f"Can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
+                )
 
-        value = self.populate_fields(table_name)
+        return value
+
+    def get_unique_column_values(self, column, unique_columns, table):
+        """
+        The function `get_unique_column_values` returns all values from a specified column in a table if the
+        column is in a list of unique columns, otherwise it returns an empty list.
+
+        :param column: The "column" parameter is an object representing a column in a database table. It
+        has properties such as "name" to get the name of the column
+        :param unique_columns: A list of column names that are considered unique in the table
+        :param table: The `table` parameter is a SQLAlchemy table object. It represents a database table and
+        is used to perform database operations such as selecting, inserting, updating, and deleting data
+        :return: a list of unique values from the specified column in the given table.
+        """
+
+        if column.name in unique_columns:
+            if column in self.cached_unique_column_values:
+                return self.cached_unique_column_values[column]
+
+            conn = self.engine.connect()
+            s = sqlalchemy.select(table.c[column.name])
+
+            self.cached_unique_column_values[column] = {
+                row[0] for row in conn.execute(s).fetchall()
+            }
+            conn.close()
+            
+            return self.cached_unique_column_values[column]
+        return set()
+
+    def get_value(self, column, foreign_columns, unique_columns, table):
+        self.existing_values = self.get_unique_column_values(
+            column=column, unique_columns=unique_columns, table=table
+        )
+
+        value = self.process_foreign(
+            column=column,
+            foreign_columns=foreign_columns,
+            table=table,
+        )
         if value is not None:
             return value
-        value = self.process_foreign(foreign_keys, table_name)
+
+        value = self.handle_column_population(table=table, column=column)
         if value is not None:
             return value
+
         else:
             raise NotImplementedError("Can you please raise an issue on github?")
 
-    def process_foreign(self, foreign_keys, table_name):
-        if self.column["name"] not in foreign_keys:
-            return None
+    def get_related_table_fields(self, column, foreign_columns):
+        desc = foreign_columns[column.name]
+        if desc in self.cached_related_table_fields:
+            return self.cached_related_table_fields[desc]
 
-        desc = foreign_keys[self.column["name"]]
         metadata = sqlalchemy.MetaData()
         metadata.reflect(bind=self.engine, only=[desc[1]])
         related_table = metadata.tables[desc[1]]
         conn = self.engine.connect()
-
         s = sqlalchemy.select(related_table.c[desc[0]])
-        result = conn.execute(s).fetchall()
 
-        items = [row[0] for row in result]
-
-        column_metadata = related_table.c[desc[0]]
-        unique_constraint = column_metadata.unique
-
-        unique_rows = []
-
-        if unique_constraint:
-            s = sqlalchemy.select(table_name.c[self.column["name"]])
-            result = conn.execute(s).fetchall()
-            unique_rows = [row[0] for row in result]
-
-            if len(unique_rows) == len(items):
-                raise ValueError("Exhausted Choices")
-
+        self.cached_related_table_fields[desc] = {
+            row[0] for row in conn.execute(s).fetchall()
+        }
+        
         conn.close()
-        random_element = self.fake.random_element(elements=items)
 
-        while random_element in unique_rows:
-            random_element = self.fake.random_element(element=items)
-        return random_element
+        return self.cached_related_table_fields[desc]
 
-    def process_row_data(self, inspector, table_name):
-        columns = inspector.get_columns(table_name)
-        foreign_keys = inspector.get_foreign_keys(table_name)
+    def process_foreign(self, foreign_columns, table, column):
+        if column.name not in foreign_columns:
+            return None
 
-        foreign_keys = {
+        related_table_fields = self.get_related_table_fields(column, foreign_columns)
+        if selectable_fields := related_table_fields - self.existing_values:
+            return random.choice(list(selectable_fields))
+        else:
+            raise ValueError(
+                f"Can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
+            )
+
+    def get_unique_columns(self, table):
+        return [column.name for column in table.columns if has_unique_index(column)]
+
+    def get_foreign_columns(self, inspector, table):
+        return {
             foreign_key["constrained_columns"][0]: (
                 foreign_key["referred_columns"][0],
                 foreign_key["referred_table"],
             )
-            for foreign_key in foreign_keys
+            for foreign_key in inspector.get_foreign_keys(table.name)
         }
 
+    def process_row_data(self, table, unique_columns, foreign_columns):
         return {
-            column["name"]: self.get_value(column, foreign_keys, table_name)
-            for column in columns
+            column.name: self.get_value(
+                column=column,
+                unique_columns=unique_columns,
+                foreign_columns=foreign_columns,
+                table=table,
+            )
+            for column in table.columns
         }
 
     def fill_table(self, inspector):
         for table_name in self.inheritance_relations:
+            self.handle_database_insertion(table_name, inspector)
+
+    def handle_database_insertion(self, table_name, inspector):
+        self.metadata = sqlalchemy.MetaData()
+        self.metadata.reflect(bind=self.engine, only=[table_name])
+        table = self.metadata.tables[table_name]
+        unique_columns = self.get_unique_columns(table=table)
+        foreign_columns = self.get_foreign_columns(inspector=inspector, table=table)
+
+        with Progress() as progress:
             color = self.rnd_color()
-            with Progress() as progress:
-                task = progress.add_task(
-                    f"[{color}] Inserting rows into {table_name}...",
-                    total=100,
-                    pulse=True,
+            task = progress.add_task(
+                f"[{color}] Inserting rows into {table_name}...",
+                total=100,
+                pulse=True,
+            )
+
+            for _ in range(self.rows):
+                # This variable is used to cache the related table fields
+                # so that we don't have to query the database every time
+                # we need to get the related table fields
+                # Its usage can be found in the `get_related_table_fields` function
+                self.cached_related_table_fields = {}
+
+                # Similarly to the `cached_related_table_fields` variable
+                # This variable is used to cache the unique column values
+                # so that we don't have to query the database every time
+                # we need to get the unique column values
+                # Its usage can be found in the `get_unique_column_values` function
+                self.cached_unique_column_values = {}
+
+                row_data = self.process_row_data(
+                    table=table,
+                    unique_columns=unique_columns,
+                    foreign_columns=foreign_columns,
                 )
-                for _ in range(self.rows):
-                    status = self.database_insertion(table_name, inspector)
-                    while not status:
-                        progress.update(
-                            task,
-                            description="[#FF0000] An Integrity Error occurred trying again...",
-                        )
-                        status = self.database_insertion(table_name, inspector)
 
-                    progress.update(
-                        task,
-                        description=f"[{color}] Inserting rows into {table_name}...",
-                        advance=100 / self.rows,
-                    )
+                self.database_insertion(table=table, entries=row_data)
 
-    def database_insertion(self, table_name, inspector):
-        metadata = sqlalchemy.MetaData()
-        metadata.reflect(bind=self.engine, only=[table_name])
-        table = metadata.tables[table_name]
-        row_data = self.process_row_data(inspector, table_name)
-        row_data
+                progress.update(
+                    task,
+                    description=f"[{color}] Inserting rows into {table_name}...",
+                    advance=100 / self.rows,
+                )
 
+    def database_insertion(self, table, entries):
         with self.engine.begin() as connection:
-            try:
-                connection.execute(table.insert().values(**row_data))
-                return True
-            except IntegrityError as e:
-                return False
-            except Exception as e:
-                raise
+            connection.execute(table.insert().values(**entries))
 
     def rnd_color(self):
         # rgb = [random.randint(100, 255) for _ in range(3)]
