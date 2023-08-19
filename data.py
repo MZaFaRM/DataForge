@@ -19,7 +19,7 @@ import uuid
 # ! list hence, if both exists `excluded_tables` will be ignored
 
 fake = faker.Faker()
-number_of_fields = 100
+number_of_fields = 3
 excluded_tables = ["system_setting"]
 tables_to_fill = []
 graph = True

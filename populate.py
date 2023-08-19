@@ -1,8 +1,10 @@
 import contextlib
+from math import e
 import random
 import time
 from faker import Faker
 import re
+from matplotlib import table
 from pyparsing import col
 import sqlalchemy
 from sqlalchemy import create_engine, inspect
@@ -14,6 +16,22 @@ from rich.progress import Progress
 from rich import print
 from sqlalchemy_utils import has_unique_index
 from sqlalchemy import text
+
+from datetime import datetime
+
+from rich import box
+from rich.align import Align
+from rich.console import Console, Group
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.spinner import Spinner
+
+from time import sleep
+
+from rich.live import Live
 
 
 class populator:
@@ -32,25 +50,132 @@ class populator:
         special_fields: list[dict] = None,
     ) -> None:
         db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
-        self.rows = rows
+        self.completed_tables_list = []
         self.special_fields = special_fields
+        self.current_progress = 0
 
         self.engine = create_engine(db_url, echo=False)
+        self.rows = rows
         inspector = inspect(self.engine)
+        tables_to_fill = tables_to_fill or inspector.get_table_names()
+        self.layout = self.get_layout(len(tables_to_fill) - len(excluded_tables))
 
-        if tables_to_fill:
-            self.make_relations(inspector=inspector, tables_to_fill=tables_to_fill)
-        else:
-            self.make_relations(inspector=inspector, excluded_tables=excluded_tables)
+        with Live(self.layout, refresh_per_second=10, screen=True):
+            self.make_jobs(len(tables_to_fill) - len(excluded_tables))
+            self.make_relations(
+                inspector=inspector,
+                tables_to_fill=tables_to_fill,
+                excluded_tables=excluded_tables,
+            )
 
-        self.arrange_graph()
-        self.fill_table(inspector=inspector)
+            self.arrange_graph()
+            self.fill_table(inspector=inspector)
+            while True:
+                pass
+
         print("[#00FF00] Operation successful!")
         if graph:
             self.draw_graph()
 
+    def get_layout(self, tables_to_fill):
+        self.make_jobs(tables_to_fill)
+        self.all_tables = tables_to_fill
+
+        layout = self.make_layout()
+        layout["header"].update(self.make_header())
+        layout["body"].update(Panel(self.make_query_grid()))
+        self.set_progress(layout)
+
+        return layout
+
+    def set_progress(self, layout=None):
+        layout = layout or self.layout
+        progress_table = Table.grid(expand=True)
+        progress_table.add_row(
+            Panel(
+                f"Thanks for the support",
+                title="Overall Progress",
+                border_style="green",
+                subtitle="Rows remaining",
+            ),
+            Panel(
+                Align.center(self.job_progress, vertical="middle"),
+                title="[b]Jobs",
+                border_style="red",
+                padding=(1, 2),
+            ),
+        )
+        layout["footer"].update(progress_table)
+        self.current_progress += 1
+
+    def make_layout(self) -> Layout:
+        """Define the layout."""
+        layout = Layout(name="root")
+
+        layout.split(
+            Layout(name="header", size=3),
+            Layout(name="main", ratio=1),
+            Layout(name="footer", size=7),
+        )
+        layout["main"].split_row(
+            Layout(name="left"),
+            Layout(name="body", ratio=2, minimum_size=60),
+            Layout(name="right"),
+        )
+
+        return layout
+
+    def make_jobs(self, tables_to_fill):
+        self.job_progress = Progress(
+            "{task.description}",
+            SpinnerColumn(),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        )
+        self.identifying_relations = self.job_progress.add_task(
+            "[green]Identifying relations", total=10
+        )
+        self.inserting_data = self.job_progress.add_task(
+            "[magenta]Inserting data into tables",
+            total=self.rows * tables_to_fill,
+        )
+
+    def handle_table_panel(self, left_tables) -> None:
+        self.get_table_panel(left_tables, "left")
+
+        completed_tables_list = self.completed_tables_list.copy()
+        completed_tables_list.reverse()
+
+        self.get_table_panel(completed_tables_list, "right")
+
+    def get_table_panel(self, table_name, side):
+        tables_grid = Table.grid(padding=0)
+        [tables_grid.add_row(f" {table_name}") for table_name in table_name]
+        table_panel = Panel(Align.center(tables_grid))
+        self.layout["main"][side].update(table_panel)
+
+    def make_query_grid(self):
+        self.query_grid = Table.grid(padding=1, expand=True)
+        self.query_grid.add_column(ratio=1)
+        self.query_grid.add_column(ratio=3)
+
+        return self.query_grid
+
+    def make_header(self) -> Panel:
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="center", ratio=1)
+        grid.add_column(justify="right")
+        grid.add_row(
+            "[b]Rich[/b] Layout application",
+            datetime.now().ctime().replace(":", "[blink]:[/]"),
+        )
+        return Panel(grid, style="white on blue")
+
     def make_relations(
-        self, inspector, excluded_tables: list = None, tables_to_fill: list = None
+        self,
+        inspector,
+        excluded_tables: list = None,
+        tables_to_fill: list = None,
     ):
         """
         The function identifies table relations and tracks foreign key relations while excluding specified
@@ -62,50 +187,33 @@ class populator:
         analysis
         :return: the dictionary of inheritance relations between tables, with excluded tables removed.
         """
-        with Progress() as progress:
-            color = self.rnd_color()
-            task = progress.add_task(
-                f"[{color}] Identifying table relations...", total=100, pulse=True
-            )
 
-            table_names = tables_to_fill or inspector.get_table_names()
+        self.job_progress.advance(self.identifying_relations)
+        self.handle_table_panel(tables_to_fill)
 
-            progress.update(
-                task, description=f"[{color}] Getting table names", advance=10
-            )
+        self.job_progress.advance(self.identifying_relations)
+        self.inheritance_relations = {}
+        step = 8 / len(tables_to_fill)
 
-            self.inheritance_relations = {}
+        self.define_relations(inspector, tables_to_fill, step, excluded_tables)
 
-            step = 80 / len(table_names)
-
-            for table_name in table_names:
-                foreign_keys = inspector.get_foreign_keys(table_name)
-
-                referred_tables = {
-                    foreign_key["referred_table"] for foreign_key in foreign_keys
-                }
-
-                self.inheritance_relations[table_name] = list(referred_tables)
-
-                progress.update(
-                    task,
-                    description=f"[{color}] Tracking foreign relations...",
-                    advance=step,
-                )
-
-            progress.update(
-                task, description=f"[{color}] Removing excluded tables...", advance=10
-            )
+    def define_relations(self, inspector, table_names, step, excluded_tables):
+        for table_name in table_names:
+            foreign_keys = inspector.get_foreign_keys(table_name)
+            referred_tables = {
+                foreign_key["referred_table"] for foreign_key in foreign_keys
+            }
+            self.inheritance_relations[table_name] = list(referred_tables)
+            self.job_progress.advance(self.identifying_relations, advance=step)
 
             if excluded_tables:
                 for table in excluded_tables:
-                    with contextlib.suppress(ValueError):
+                    with contextlib.suppress(KeyError):
                         self.inheritance_relations.pop(table)
 
-            progress.update(
-                task, description="[#00FF00] Foreign key relations identified..."
-            )
-            return self.inheritance_relations
+            self.job_progress.advance(self.identifying_relations)
+
+        return self.inheritance_relations
 
     def draw_graph(self):
         """
@@ -135,43 +243,32 @@ class populator:
         The function arranges identified inheritance relations in a directed graph and orders them
         topologically.
         """
-        with Progress() as progress:
-            color = self.rnd_color()
-            task = progress.add_task(
-                f"[{color}] Ordering identified relations...", total=100, pulse=True
-            )
-            graph = nx.DiGraph()
+        task = self.job_progress.advance(self.identifying_relations)
 
-            step = 60 / len(self.inheritance_relations)
-            for table, inherited_tables in self.inheritance_relations.items():
-                if inherited_tables:
-                    for inherited_table in inherited_tables:
-                        graph.add_edge(inherited_table, table)
-                else:
-                    graph.add_node(table)
-                progress.update(
-                    task,
-                    description=f"[{color}] Establishing connections...",
-                    advance=step,
-                )
+        graph = nx.DiGraph()
 
-            ordered_tables = list(nx.topological_sort(graph))
+        step = 60 / len(self.inheritance_relations)
+        for table, inherited_tables in self.inheritance_relations.items():
+            if inherited_tables:
+                for inherited_table in inherited_tables:
+                    graph.add_edge(inherited_table, table)
+            else:
+                graph.add_node(table)
 
-            ordered_inheritance_relations = OrderedDict()
+            self.job_progress.advance(self.identifying_relations)
 
-            for table in ordered_tables:
-                if table in self.inheritance_relations:
-                    ordered_inheritance_relations[table] = self.inheritance_relations[
-                        table
-                    ]
-                progress.update(
-                    task, description=f"[{color}] Saving relations...", advance=step
-                )
+        ordered_tables = list(nx.topological_sort(graph))
 
-            self.inheritance_relations = ordered_inheritance_relations
-            progress.update(
-                task, description="[#00FF00] Ordered identified relations..."
-            )
+        ordered_inheritance_relations = OrderedDict()
+
+        for table in ordered_tables:
+            if table in self.inheritance_relations:
+                ordered_inheritance_relations[table] = self.inheritance_relations[table]
+
+            self.job_progress.advance(self.identifying_relations)
+
+        self.inheritance_relations = ordered_inheritance_relations
+        self.job_progress.advance(self.identifying_relations)
 
     def populate_fields(self, column, table):
         for field in self.special_fields:
@@ -220,7 +317,6 @@ class populator:
         while value in self.existing_values or value in tried_values:
             tried_values.add(value)
             value = self.populate_fields(column, table)
-            print(f"Trying {value}, attempt number {count}")
             count -= 1
             if count <= 0:
                 raise ValueError(
@@ -236,7 +332,7 @@ class populator:
 
         :param column: The "column" parameter is an object representing a column in a database table. It
         has properties such as "name" to get the name of the column
-        :param unique_columns: A list of column names that are considered unique in the table
+        :param unique_columns: A list of column names that are conleftred unique in the table
         :param table: The `table` parameter is a SQLAlchemy table object. It represents a database table and
         is used to perform database operations such as selecting, inserting, updating, and deleting data
         :return: a list of unique values from the specified column in the given table.
@@ -253,7 +349,7 @@ class populator:
                 row[0] for row in conn.execute(s).fetchall()
             }
             conn.close()
-            
+
             return self.cached_unique_column_values[column]
         return set()
 
@@ -291,7 +387,7 @@ class populator:
         self.cached_related_table_fields[desc] = {
             row[0] for row in conn.execute(s).fetchall()
         }
-        
+
         conn.close()
 
         return self.cached_related_table_fields[desc]
@@ -321,19 +417,34 @@ class populator:
         }
 
     def process_row_data(self, table, unique_columns, foreign_columns):
-        return {
-            column.name: self.get_value(
+        data = {}
+        query_grid = self.make_query_grid()
+        for column in table.columns:
+            data[column.name] = self.get_value(
                 column=column,
                 unique_columns=unique_columns,
                 foreign_columns=foreign_columns,
                 table=table,
             )
-            for column in table.columns
-        }
+            query_grid.add_row(f"[yellow]{column.name}", f"[green]{data[column.name]}")
+            self.layout["body"].update(
+                Panel(Align.center(query_grid), highlight=True, padding=1, expand=True)
+            )
+        return data
 
     def fill_table(self, inspector):
-        for table_name in self.inheritance_relations:
+        self.inheritance_relations_list = list(self.inheritance_relations)
+
+        for table_name in self.inheritance_relations.copy():
+            table_name_index = self.inheritance_relations_list.index(table_name)
+            self.inheritance_relations_list[table_name_index] = f"[yellow]{table_name}"
+
+            self.handle_table_panel(self.inheritance_relations_list)
             self.handle_database_insertion(table_name, inspector)
+            self.inheritance_relations_list.remove(f"[yellow]{table_name}")
+
+            self.completed_tables_list.append(f"[green]{table_name}")
+            self.handle_table_panel(self.inheritance_relations_list)
 
     def handle_database_insertion(self, table_name, inspector):
         self.metadata = sqlalchemy.MetaData()
@@ -342,47 +453,36 @@ class populator:
         unique_columns = self.get_unique_columns(table=table)
         foreign_columns = self.get_foreign_columns(inspector=inspector, table=table)
 
-        with Progress() as progress:
-            color = self.rnd_color()
-            task = progress.add_task(
-                f"[{color}] Inserting rows into {table_name}...",
-                total=100,
-                pulse=True,
+        # task = progress.add_task(
+        #     f"[{color}] Inserting rows into {table_name}...",
+        #     total=100,
+        #     pulse=True,
+        # )
+
+        for _ in range(self.rows):
+            # This variable is used to cache the related table fields
+            # so that we don't have to query the database every time
+            # we need to get the related table fields
+            # Its usage can be found in the `get_related_table_fields` function
+            self.cached_related_table_fields = {}
+
+            # Similarly to the `cached_related_table_fields` variable
+            # This variable is used to cache the unique column values
+            # so that we don't have to query the database every time
+            # we need to get the unique column values
+            # Its usage can be found in the `get_unique_column_values` function
+            self.cached_unique_column_values = {}
+
+            row_data = self.process_row_data(
+                table=table,
+                unique_columns=unique_columns,
+                foreign_columns=foreign_columns,
             )
 
-            for _ in range(self.rows):
-                # This variable is used to cache the related table fields
-                # so that we don't have to query the database every time
-                # we need to get the related table fields
-                # Its usage can be found in the `get_related_table_fields` function
-                self.cached_related_table_fields = {}
-
-                # Similarly to the `cached_related_table_fields` variable
-                # This variable is used to cache the unique column values
-                # so that we don't have to query the database every time
-                # we need to get the unique column values
-                # Its usage can be found in the `get_unique_column_values` function
-                self.cached_unique_column_values = {}
-
-                row_data = self.process_row_data(
-                    table=table,
-                    unique_columns=unique_columns,
-                    foreign_columns=foreign_columns,
-                )
-
-                self.database_insertion(table=table, entries=row_data)
-
-                progress.update(
-                    task,
-                    description=f"[{color}] Inserting rows into {table_name}...",
-                    advance=100 / self.rows,
-                )
+            self.database_insertion(table=table, entries=row_data)
 
     def database_insertion(self, table, entries):
         with self.engine.begin() as connection:
-            connection.execute(table.insert().values(**entries))
-
-    def rnd_color(self):
-        # rgb = [random.randint(100, 255) for _ in range(3)]
-        # return '#{:02x}{:02x}{:02x}'.format(*rgb)
-        return random.choice(["#00ff00", "#91C788"])
+            query = str(connection.execute(table.insert().values(**entries)))
+            self.job_progress.advance(self.inserting_data)
+            self.set_progress()
