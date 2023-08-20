@@ -1,28 +1,36 @@
 from populate import populator
 from decouple import config
-from faker import Faker
 import data
 from rich.traceback import install
 
 
-def main():
-    install(max_frames=2)
-    
+def configure_database():
+    """
+    Read database configuration from environment variables.
+    """
     db_host = config("DB_HOST")
     db_user = config("DB_USER")
     db_password = config("DB_PASSWORD")
     db_database = config("DB_NAME")
+    return db_host, db_user, db_password, db_database
+
+
+def main():
+    # Rich traceback for more visually appealing exception handling.
+    install(max_frames=2)
+
+    db_host, db_user, db_password, db_database = configure_database()
 
     populator(
-        user=db_user,  # * Database host name
-        password=db_password,  # * Database username
-        host=db_host,  # * Database password
-        database=db_database,  # * Database name
-        rows=data.number_of_fields,  # * Number of rows to insert
-        excluded_tables=data.excluded_tables,  # * Tables to exclude from insertion must be a list
-        tables_to_fill=data.tables_to_fill,  # * Tables to exclude from insertion must be a list
-        graph=data.graph,  # * Whether to show table relation graph at the end must be a python bool
-        special_fields=data.fields,  # * If any special fields
+        user=db_user,
+        password=db_password,
+        host=db_host,
+        database=db_database,
+        rows=data.number_of_fields,
+        excluded_tables=data.excluded_tables,
+        tables_to_fill=data.tables_to_fill,
+        graph=data.graph,
+        special_fields=data.fields,
     )
 
 
