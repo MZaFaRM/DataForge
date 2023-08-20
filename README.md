@@ -4,11 +4,6 @@
 
 DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database. It automatically detects foreign key relations and inserts data with respect to it.
 
-## Table of Contents
-- [Installation](#installation)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Support](#support)
 
 ## How to Use
 
@@ -20,7 +15,7 @@ DataForge is a Python tool that helps you populate databases with test data. It'
 
 2. Create and setup the `.env` file with the database connection details by referring to `.env.sample`.
 
-3. [Configure `data.py`](#Configuration)
+3. [Configure `data.py`](#Configurations)
 
 4. Run `main.py`.
 
