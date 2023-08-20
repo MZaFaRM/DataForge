@@ -2,9 +2,15 @@
 
 <img width="926" alt="Data Forge home" src="https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1">
 
-DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database.
+<p align="center">
+  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-00000F?style=for-the-badge&logo=mysql&logoColor=white">
+</p>
+   
 
-### How to Use
+DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database. It automatically detects foreign key relations and inserts data with respect to it.
+
+
+## How to Use
 
 1. Install the required dependencies by running the following command:
 
@@ -14,20 +20,20 @@ DataForge is a Python tool that helps you populate databases with test data. It'
 
 2. Create and setup the `.env` file with the database connection details by referring to `.env.sample`.
 
-3. Configure the `data.py`.
+3. [Configure `data.py`](#configurations)
 
-4. Run the `main.py`.
+4. Run `main.py`.
 
-### Configurations
+## Configurations
 
 ![code-snapshot](https://github.com/MZaFaRM/DataForge/assets/98420006/78a2f15d-2ad7-4f56-a39b-6abb3ff07db2)
 
-You can customize the behavior of this tool by modifying the following values in the code:
+You can customize the behavior of this tool by modifying the following values from `data.py`:
 
-- `number_of_fields`: Determines the number of rows to insert.
+- `number_of_fields`: the number of rows to insert into the database.
 - `excluded_tables`: A list of tables to exclude from data insertion.
 - `tables_to_fill`: A list of tables to insert data into. If empty, all tables in the database will be filled.
-- `graph`: Displays the graph after data insertion.
+- `graph`: Displays the database foreign relations graph after data insertion.
 - `field`: Contains instructions for identifying and filling columns.
   - `Field Name`: The name of the field.
   - `Field Type`: The type of the field.
@@ -36,7 +42,21 @@ You can customize the behavior of this tool by modifying the following values in
 
 Feel free to adjust these configurations based on your specific requirements.
 
+## Prerequisites
 
-### Support
+- Python `3.11.3`
+- MySQL database server
+
+## Dependencies
+
+- SQLAlchemy `2.0.20`
+- mysql-connector-python `8.1.0`
+- Faker `18.9.0`
+- matplotlib `3.7.2`
+- networkx `3.1`
+- python-decouple `3.8`
+- rich `13.5.2`
+
+## Support
 
 For any questions or assistance with using DataForge, feel free to contact me at muhammedzafar.mm@gmail.com.
