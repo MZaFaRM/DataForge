@@ -2,6 +2,11 @@
 
 <img width="926" alt="Data Forge home" src="https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1">
 
+<p align="center">
+  <img alt="MySQL" src="https://img.shields.io/badge/MySQL-00000F?style=for-the-badge&logo=mysql&logoColor=white">
+</p>
+   
+
 DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database. It automatically detects foreign key relations and inserts data with respect to it.
 
 
@@ -39,19 +44,18 @@ Feel free to adjust these configurations based on your specific requirements.
 
 ## Prerequisites
 
-- Python 3.11.3
+- Python `3.11.3`
 - MySQL database server
 
 ## Dependencies
 
-- Django 3.2.5
-- SQLAlchemy 2.0.20
-- mysql-connector-python 8.1.0
-- Faker 18.9.0
-- matplotlib 3.7.2
-- networkx 3.1
-- python-decouple 3.8
-- rich 13.5.2
+- SQLAlchemy `2.0.20`
+- mysql-connector-python `8.1.0`
+- Faker `18.9.0`
+- matplotlib `3.7.2`
+- networkx `3.1`
+- python-decouple `3.8`
+- rich `13.5.2`
 
 ## Support
 
