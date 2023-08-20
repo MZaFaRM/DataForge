@@ -1,5 +1,7 @@
 # DataForge
 
+<img width="926" alt="Data Forge home" src="https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1">
+
 DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database.
 
 ### How to Use
@@ -12,9 +14,28 @@ DataForge is a Python tool that helps you populate databases with test data. It'
 
 2. Create and setup the `.env` file with the database connection details by referring to `.env.sample`.
 
-3. Configure the `main.py` according to your requirements.
+3. Configure the `data.py`.
 
-4. Run the `main.py` script to start the data population process.
+4. Run the `main.py`.
+
+### Configurations
+
+![code-snapshot](https://github.com/MZaFaRM/DataForge/assets/98420006/78a2f15d-2ad7-4f56-a39b-6abb3ff07db2)
+
+You can customize the behavior of this tool by modifying the following values in the code:
+
+- `number_of_fields`: Determines the number of rows to insert.
+- `excluded_tables`: A list of tables to exclude from data insertion.
+- `tables_to_fill`: A list of tables to insert data into. If empty, all tables in the database will be filled.
+- `graph`: Displays the graph after data insertion.
+- `field`: Contains instructions for identifying and filling columns.
+  - `Field Name`: The name of the field.
+  - `Field Type`: The type of the field.
+  - `Table Name`: The name of the table where the field is located.
+  - `Value Generation`: Instructions for generating values for the field.
+
+Feel free to adjust these configurations based on your specific requirements.
+
 
 ### Support
 
