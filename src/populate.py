@@ -51,6 +51,7 @@ class DatabasePopulator:
     ) -> None:
         
         db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
+
         self.completed_tables_list = []
         self.special_fields = special_fields
 
@@ -59,8 +60,18 @@ class DatabasePopulator:
         self.engine = create_engine(db_url, echo=False)
         self.rows = rows
         inspector = inspect(self.engine)
+        
+        # If no tables are specified, fill all tables in the database
+        # Otherwise, fill the specified tables
         tables_to_fill = tables_to_fill or inspector.get_table_names()
-        total_len = len(tables_to_fill) - len(excluded_tables)
+        tables_to_fill = set(tables_to_fill) - set(excluded_tables or [])
+        total_len = len(tables_to_fill)
+        if total_len == 0:
+            raise ValueError(
+                "I can't find any tables to fill. Check your "
+                "`tables_to_fill` and `excluded_tables` "
+                "parameters, maybe they need some tweaks?"
+            )
 
         # Defines the layout of the CLI
         self.layout = self.get_layout(total_len)
@@ -68,7 +79,7 @@ class DatabasePopulator:
         with Live(self.layout, refresh_per_second=10, screen=True):
             # Initializes the progress bar
             self.make_jobs(total_len)
-            
+
             # Identifies inheritance relations between tables
             self.make_relations(
                 inspector=inspector,
@@ -78,11 +89,10 @@ class DatabasePopulator:
 
             # Arranges inheritance relations in a directed graph
             self.arrange_graph()
-            
+
             # Populates the database with random data
             self.fill_table(inspector=inspector)
-            
-            
+
             if graph:
                 self.draw_graph()
             else:
@@ -94,7 +104,14 @@ class DatabasePopulator:
         with open("assets/banner.txt", encoding="utf-8") as f:
             banner = f.readlines()
 
-        print(*banner)
+        print()
+        [ print(
+            Align(
+                bane.strip(),
+                align="center",
+            )
+            
+        ) for bane in banner ]
 
         success = random.choice(
             [
@@ -116,11 +133,15 @@ class DatabasePopulator:
         print(
             Align(
                 f"[yellow]{success}[/] smoothly inserted {self.current_progress} rows.",
-                align="right",
+                align="center",
             )
         )
+        print()
 
     def get_layout(self, tables_to_fill):
+        """
+        The function `get_layout` defines the layout of the CLI.
+        """
         self.make_jobs(tables_to_fill)
         self.all_tables = tables_to_fill
 
@@ -132,20 +153,6 @@ class DatabasePopulator:
         self.set_progress(layout)
 
         return layout
-
-    def set_progress(self, layout=None):
-        layout = layout or self.layout
-        progress_table = Table.grid(expand=True)
-        progress_table.add_row(
-            Panel(
-                Align.center(self.job_progress, vertical="middle"),
-                title="[b]Progress",
-                border_style="red",
-                padding=(1, 2),
-                subtitle="[yellow]Thanks for checking out my project! Do consider giving it a star on [link=https://github.com/MZaFaRM/DataForge/]GitHub[/link] and feel free to [link=https://www.linkedin.com/in/muhammed-zafar-mm/]reach out[/link] anytime.",
-            ),
-        )
-        layout["footer"].update(progress_table)
 
     def make_layout(self) -> Layout:
         """Define the layout."""
@@ -165,6 +172,10 @@ class DatabasePopulator:
         return layout
 
     def make_jobs(self, tables_to_fill):
+        """
+        The function `make_jobs` initializes all the progress bars.
+
+        """
         self.job_progress = Progress(
             "{task.description}",
             SpinnerColumn(),
@@ -178,6 +189,23 @@ class DatabasePopulator:
             "[magenta]Inserting data into tables",
             total=self.rows * tables_to_fill,
         )
+
+    def set_progress(self, layout=None):
+        """
+        The function `set_progress` sets the progress bar in the footer of the CLI.
+        """
+        layout = layout or self.layout
+        progress_table = Table.grid(expand=True)
+        progress_table.add_row(
+            Panel(
+                Align.center(self.job_progress, vertical="middle"),
+                title="[b]Progress",
+                border_style="red",
+                padding=(1, 2),
+                subtitle="[yellow]Thanks for checking out my project! Do consider giving it a star on [link=https://github.com/MZaFaRM/DataForge/]GitHub[/link] and feel free to [link=https://www.linkedin.com/in/muhammed-zafar-mm/]reach out[/link] anytime.",
+            ),
+        )
+        layout["footer"].update(progress_table)
 
     def handle_table_panel(self, left_tables) -> None:
         self.get_table_panel(left_tables, "left", "TABLES REMAINING")
@@ -236,6 +264,9 @@ class DatabasePopulator:
         self.handle_table_panel(tables_to_fill)
 
         self.job_progress.advance(self.identifying_relations)
+        # The `self.inheritance_relations` is a list of tables arranged in a topological order
+        # Respecting the inheritance relations between tables, It provides the order in which
+        # the tables should be filled with data
         self.inheritance_relations = {}
         step = 8 / len(tables_to_fill)
 
@@ -315,6 +346,11 @@ class DatabasePopulator:
         self.job_progress.advance(self.identifying_relations)
 
     def populate_fields(self, column, table):
+        """
+        The function `populate_fields` populates a 
+        column with a value based on the column's name, type, and
+        table name.
+        """
         for field in self.special_fields:
             if (
                 self.compare_column_with(column, field["name"], "name")
@@ -325,12 +361,13 @@ class DatabasePopulator:
                     else not field.get("table")
                 )
             ):
+                # If the generator is a function, call it and return the result
                 value = (
                     field["generator"]()
                     if callable(field["generator"])
                     else field["generator"]
                 )
-
+                # If the value is a string, truncate it to the column's length
                 if value is not None:
                     try:
                         return str(value)[: column.type.length]
@@ -347,6 +384,11 @@ class DatabasePopulator:
             return False
 
     def compare_column_with(self, column, data, type):
+        """
+        Compares a column with a given data using a specified type of comparison.
+        it could be a regex or a string comparison.
+        and the type could be the column's `name` or `type`.
+        """
         if data:
             if self.is_valid_regex(data):
                 return re.search(data, str(getattr(column, type)), re.IGNORECASE)
@@ -355,6 +397,13 @@ class DatabasePopulator:
             return False
 
     def handle_column_population(self, table, column):
+        """
+        This function handles the population of a column with a value.
+        It first checks if the column is a foreign key, if it is, it
+        returns a value from the related table. If it's not, it checks
+        if the column is unique, if it is, it returns a unique value
+        for the column. If it's not, it returns None.
+        """
         tried_values = set()
         value = self.populate_fields(column, table)
         count = 30
@@ -371,37 +420,39 @@ class DatabasePopulator:
 
     def get_unique_column_values(self, column, unique_columns, table):
         """
-        The function `get_unique_column_values` returns all values from a specified column in a table if the
+        The function returns all values from a specified column in a table if the
         column is in a list of unique columns, otherwise it returns an empty list.
-
-        :param column: The "column" parameter is an object representing a column in a database table. It
-        has properties such as "name" to get the name of the column
-        :param unique_columns: A list of column names that are unique in the table
-        :param table: The `table` parameter is a SQLAlchemy table object. It represents a database table and
-        is used to perform database operations such as selecting, inserting, updating, and deleting data
-        :return: a list of unique values from the specified column in the given table.
         """
 
         if column.name in unique_columns:
+            # If the column's unique values have already been cached, return them
             if column in self.cached_unique_column_values:
                 return self.cached_unique_column_values[column]
 
             conn = self.engine.connect()
             s = sqlalchemy.select(table.c[column.name])
-
+            
+            # Cache the column's unique values
             self.cached_unique_column_values[column] = {
                 row[0] for row in conn.execute(s).fetchall()
             }
             conn.close()
-
+            
             return self.cached_unique_column_values[column]
         return set()
 
     def get_value(self, column, foreign_columns, unique_columns, table):
+        """
+        The function `get_value` returns a value for a column in a table.
+        """
+        # It first checks if the column is unique, if it is, it fetches a 
+        # set of unique values to insert
         self.existing_values = self.get_unique_column_values(
             column=column, unique_columns=unique_columns, table=table
         )
-
+        # it calls the `process_foreign`
+        # function to check if the column is a foreign key
+        # if it is, it returns a value from the related table
         value = self.process_foreign(
             column=column,
             foreign_columns=foreign_columns,
@@ -409,7 +460,9 @@ class DatabasePopulator:
         )
         if value is not None:
             return value
-
+        # if the column is not a foreign key, it calls the `handle_column_population`
+        # function to populate the column with a value based on the definition from
+        # the `data.py` file
         value = self.handle_column_population(table=table, column=column)
         if value is not None:
             return value
@@ -421,16 +474,24 @@ class DatabasePopulator:
             )
 
     def get_related_table_fields(self, column, foreign_columns):
+        """
+        The function `get_related_table_fields` returns a set of values from a related table
+        """
+        # desc is a tuple containing the 
+        # (name of the column, the name of the related table)
         desc = foreign_columns[column.name]
+        # If the related table fields have already been cached, return them
         if desc in self.cached_related_table_fields:
             return self.cached_related_table_fields[desc]
 
+        # Otherwise, query the database to get the related table fields
         metadata = sqlalchemy.MetaData()
         metadata.reflect(bind=self.engine, only=[desc[1]])
         related_table = metadata.tables[desc[1]]
         conn = self.engine.connect()
         s = sqlalchemy.select(related_table.c[desc[0]])
 
+        # and cache the related table fields
         self.cached_related_table_fields[desc] = {
             row[0] for row in conn.execute(s).fetchall()
         }
@@ -440,10 +501,16 @@ class DatabasePopulator:
         return self.cached_related_table_fields[desc]
 
     def process_foreign(self, foreign_columns, table, column):
+        """
+        The function `process_foreign` checks if a column is a foreign key, if it is,
+        it returns a value from the related table.
+        """
         if column.name not in foreign_columns:
             return None
-
+        # Gets the related table fields from the `get_related_table_fields` function
         related_table_fields = self.get_related_table_fields(column, foreign_columns)
+
+        # self.existing_values only gets populated if the column only accepts to unique values
         if selectable_fields := related_table_fields - self.existing_values:
             return random.choice(list(selectable_fields))
         else:
@@ -464,15 +531,23 @@ class DatabasePopulator:
         }
 
     def process_row_data(self, table, unique_columns, foreign_columns):
+        """
+        The function `process_row_data` processes the data for a row in a table.
+        """
         data = {}
+        # query_grid is a table that displays the column name and the value
+        # It's at the middle of the CLI and it gets updated every time a column
+        # gets a value
         query_grid = self.make_query_grid()
         for column in table.columns:
+            # The `get_value` function returns a value for a column
             data[column.name] = self.get_value(
                 column=column,
                 unique_columns=unique_columns,
                 foreign_columns=foreign_columns,
                 table=table,
             )
+            # The `query_grid` gets updated with the column name and the value
             query_grid.add_row(f"[yellow]{column.name}", f"[green]{data[column.name]}")
             self.layout["body"].update(
                 Panel(
@@ -486,31 +561,42 @@ class DatabasePopulator:
         return data
 
     def fill_table(self, inspector):
+        """
+        The most important function in this class. It fills the tables with data.
+        and it's called after the inheritance relations have been identified and
+        arranged in a directed graph.
+        """
+        # The `self.inheritance_relations_list` is a list of tables arranged in a topological order
+        # derived from the `self.inheritance_relations` OrderedDict variable defined in the
+        # `arrange_graph` function
         self.inheritance_relations_list = list(self.inheritance_relations)
 
+        # The `self.inheritance_relations` is a list of tables arranged in a topological order
         for table_name in self.inheritance_relations.copy():
+            # Color the current table being filled's name in yellow
             table_name_index = self.inheritance_relations_list.index(table_name)
             self.inheritance_relations_list[table_name_index] = f"[yellow]{table_name}"
 
+            # Update the table panel with the current table being filled's name
             self.handle_table_panel(self.inheritance_relations_list)
+            
+            # Call the `handle_database_insertion` function to fill the current table
             self.handle_database_insertion(table_name, inspector)
+            
+            # Logic for how to display the table after it has been filled
             self.inheritance_relations_list.remove(f"[yellow]{table_name}")
-
             self.completed_tables_list.append(f"[green]{table_name}")
             self.handle_table_panel(self.inheritance_relations_list)
 
     def handle_database_insertion(self, table_name, inspector):
+        """
+        The function `handle_database_insertion` fills a table with data.
+        """
         self.metadata = sqlalchemy.MetaData()
         self.metadata.reflect(bind=self.engine, only=[table_name])
         table = self.metadata.tables[table_name]
         unique_columns = self.get_unique_columns(table=table)
         foreign_columns = self.get_foreign_columns(inspector=inspector, table=table)
-
-        # task = progress.add_task(
-        #     f"[{color}] Inserting rows into {table_name}...",
-        #     total=100,
-        #     pulse=True,
-        # )
 
         for _ in range(self.rows):
             # This variable is used to cache the related table fields
@@ -526,17 +612,21 @@ class DatabasePopulator:
             # Its usage can be found in the `get_unique_column_values` function
             self.cached_unique_column_values = {}
 
+            # The `row_data` variable contains the data for a row in a table
             row_data = self.process_row_data(
                 table=table,
                 unique_columns=unique_columns,
                 foreign_columns=foreign_columns,
             )
-
+            # The `database_insertion` function inserts the data into the database
             self.database_insertion(table=table, entries=row_data)
 
     def database_insertion(self, table, entries):
+        # Simply inserts the data into the database
         with self.engine.begin() as connection:
             connection.execute(table.insert().values(**entries))
+            # Advances the progress bar
             self.job_progress.advance(self.inserting_data)
             self.set_progress()
+            # Updates the number of rows inserted
             self.current_progress += 1

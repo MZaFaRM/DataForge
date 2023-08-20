@@ -24,9 +24,9 @@ import uuid
 
 
 fake = faker.Faker()
-number_of_fields = 100
+number_of_fields = 1
 excluded_tables = ["system_setting"]
-tables_to_fill = []
+tables_to_fill = ["user"]
 graph = False
 
 fields = [
