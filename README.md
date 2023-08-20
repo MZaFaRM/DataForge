@@ -37,6 +37,21 @@ You can customize the behavior of this tool by modifying the following values fr
 
 Feel free to adjust these configurations based on your specific requirements.
 
+## Prerequisites
+
+- Python 3.11.3
+- MySQL database server
+
+## Dependencies
+
+- Django 3.2.5
+- SQLAlchemy 2.0.20
+- mysql-connector-python 8.1.0
+- Faker 18.9.0
+- matplotlib 3.7.2
+- networkx 3.1
+- python-decouple 3.8
+- rich 13.5.2
 
 ## Support
 
