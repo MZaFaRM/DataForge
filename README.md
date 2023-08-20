@@ -2,7 +2,7 @@
 
 <img width="926" alt="Data Forge home" src="https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1">
 
-DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database.
+DataForge is a Python tool that helps you populate databases with test data. It's designed to simplify the process of generating and inserting large volumes of realistic data into your database. It automatically detects foreign key relations and inserts data with respect to it.
 
 ### How to Use
 
@@ -24,10 +24,10 @@ DataForge is a Python tool that helps you populate databases with test data. It'
 
 You can customize the behavior of this tool by modifying the following values in the code:
 
-- `number_of_fields`: Determines the number of rows to insert.
+- `number_of_fields`: the number of rows to insert into the database.
 - `excluded_tables`: A list of tables to exclude from data insertion.
 - `tables_to_fill`: A list of tables to insert data into. If empty, all tables in the database will be filled.
-- `graph`: Displays the graph after data insertion.
+- `graph`: Displays the database foreign relations graph after data insertion.
 - `field`: Contains instructions for identifying and filling columns.
   - `Field Name`: The name of the field.
   - `Field Type`: The type of the field.
