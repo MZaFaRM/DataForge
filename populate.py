@@ -1,37 +1,22 @@
 import contextlib
-from math import e
 import random
-import time
-from faker import Faker
 import re
-from matplotlib import table
-from pyparsing import col
-import sqlalchemy
-from sqlalchemy import create_engine, inspect
-import networkx as nx
-import matplotlib.pyplot as plt
 from collections import OrderedDict
-from sqlalchemy.exc import IntegrityError
-from rich.progress import Progress
+import time
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import sqlalchemy
 from rich import print
-from sqlalchemy_utils import has_unique_index
-from sqlalchemy import text
-
-from datetime import datetime
-
-from rich import box
 from rich.align import Align
-from rich.console import Console, Group
 from rich.layout import Layout
+from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
-from rich.syntax import Syntax
 from rich.table import Table
-from rich.spinner import Spinner
-
-from time import sleep
-
-from rich.live import Live
+from sqlalchemy import create_engine, inspect
+from sqlalchemy_utils import has_unique_index
+from rich import print
 
 
 class populator:
@@ -58,10 +43,12 @@ class populator:
         self.rows = rows
         inspector = inspect(self.engine)
         tables_to_fill = tables_to_fill or inspector.get_table_names()
-        self.layout = self.get_layout(len(tables_to_fill) - len(excluded_tables))
+        total_len = len(tables_to_fill) - len(excluded_tables)
+
+        self.layout = self.get_layout(total_len)
 
         with Live(self.layout, refresh_per_second=10, screen=True):
-            self.make_jobs(len(tables_to_fill) - len(excluded_tables))
+            self.make_jobs(total_len)
             self.make_relations(
                 inspector=inspector,
                 tables_to_fill=tables_to_fill,
@@ -70,10 +57,30 @@ class populator:
 
             self.arrange_graph()
             self.fill_table(inspector=inspector)
-            while True:
-                pass
+            time.sleep(2)
 
-        print("[#00FF00] Operation successful!")
+        with open("banner.txt", encoding="utf-8") as f:
+            banner = f.readlines()
+
+        print(*banner)
+        
+        success = random.choice([
+            "Voila!",
+            "Wow!",
+            "Ta-da!",
+            "Yay!",
+            "Oops!",
+            "Woah!",
+            "Cool!",
+            "Bam!",
+            "Eureka!",
+            "Aha!",
+            "Hooray!",
+            "Oof!",
+        ])
+        
+        print(Align(f"[yellow]{success}[/] smoothly inserted {self.current_progress} rows.", align="right"))
+        
         if graph:
             self.draw_graph()
 
@@ -83,7 +90,9 @@ class populator:
 
         layout = self.make_layout()
         layout["header"].update(self.make_header())
-        layout["body"].update(Panel(self.make_query_grid()))
+        layout["body"].update(
+            Panel(self.make_query_grid(), title="[green b]DATA ENTRY")
+        )
         self.set_progress(layout)
 
         return layout
@@ -93,27 +102,21 @@ class populator:
         progress_table = Table.grid(expand=True)
         progress_table.add_row(
             Panel(
-                f"Thanks for the support",
-                title="Overall Progress",
-                border_style="green",
-                subtitle="Rows remaining",
-            ),
-            Panel(
                 Align.center(self.job_progress, vertical="middle"),
-                title="[b]Jobs",
+                title="[b]Progress",
                 border_style="red",
                 padding=(1, 2),
+                subtitle="[yellow]Thanks for checking out my project! Do consider giving it a star on [link=https://github.com/MZaFaRM/DataForge/]GitHub[/link] and feel free to [link=https://www.linkedin.com/in/muhammed-zafar-mm/]reach out[/link] anytime.",
             ),
         )
         layout["footer"].update(progress_table)
-        self.current_progress += 1
 
     def make_layout(self) -> Layout:
         """Define the layout."""
         layout = Layout(name="root")
 
         layout.split(
-            Layout(name="header", size=3),
+            Layout(name="header", size=10),
             Layout(name="main", ratio=1),
             Layout(name="footer", size=7),
         )
@@ -141,17 +144,17 @@ class populator:
         )
 
     def handle_table_panel(self, left_tables) -> None:
-        self.get_table_panel(left_tables, "left")
+        self.get_table_panel(left_tables, "left", "TABLES REMAINING")
 
         completed_tables_list = self.completed_tables_list.copy()
         completed_tables_list.reverse()
 
-        self.get_table_panel(completed_tables_list, "right")
+        self.get_table_panel(completed_tables_list, "right", "COMPLETED TABLES")
 
-    def get_table_panel(self, table_name, side):
+    def get_table_panel(self, table_name, side, title):
         tables_grid = Table.grid(padding=0)
         [tables_grid.add_row(f" {table_name}") for table_name in table_name]
-        table_panel = Panel(Align.center(tables_grid))
+        table_panel = Panel(Align.center(tables_grid), title=f"[green b]{title}")
         self.layout["main"][side].update(table_panel)
 
     def make_query_grid(self):
@@ -162,14 +165,19 @@ class populator:
         return self.query_grid
 
     def make_header(self) -> Panel:
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="center", ratio=1)
-        grid.add_column(justify="right")
+        grid = self.get_banner("banner.txt")
         grid.add_row(
-            "[b]Rich[/b] Layout application",
-            datetime.now().ctime().replace(":", "[blink]:[/]"),
+            "From [b link=https://github.com/MZaFaRM/]Muhammed Zafar[/]",
         )
-        return Panel(grid, style="white on blue")
+        return Panel(grid, style="purple on black")
+
+    def get_banner(self, address):
+        result = Table.grid(expand=True)
+        result.add_column(justify="center")
+        with open(address, encoding="utf-8") as banner:
+            banner_lines = banner.readlines()
+            [result.add_row(line.strip()) for line in banner_lines]
+        return result
 
     def make_relations(
         self,
@@ -320,7 +328,7 @@ class populator:
             count -= 1
             if count <= 0:
                 raise ValueError(
-                    f"Can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
+                    f"I can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
                 )
 
         return value
@@ -332,7 +340,7 @@ class populator:
 
         :param column: The "column" parameter is an object representing a column in a database table. It
         has properties such as "name" to get the name of the column
-        :param unique_columns: A list of column names that are conleftred unique in the table
+        :param unique_columns: A list of column names that are unique in the table
         :param table: The `table` parameter is a SQLAlchemy table object. It represents a database table and
         is used to perform database operations such as selecting, inserting, updating, and deleting data
         :return: a list of unique values from the specified column in the given table.
@@ -369,9 +377,12 @@ class populator:
         value = self.handle_column_population(table=table, column=column)
         if value is not None:
             return value
-
         else:
-            raise NotImplementedError("Can you please raise an issue on github?")
+            raise NotImplementedError(
+                "I have no idea what value to assign "
+                f"to the field '{column.name}' in '{table}'. "
+                "Maybe updating my `data.py` will help?"
+            )
 
     def get_related_table_fields(self, column, foreign_columns):
         desc = foreign_columns[column.name]
@@ -428,7 +439,13 @@ class populator:
             )
             query_grid.add_row(f"[yellow]{column.name}", f"[green]{data[column.name]}")
             self.layout["body"].update(
-                Panel(Align.center(query_grid), highlight=True, padding=1, expand=True)
+                Panel(
+                    Align.center(query_grid),
+                    highlight=True,
+                    padding=1,
+                    expand=True,
+                    title="[green b]DATA ENTRY",
+                )
             )
         return data
 
@@ -483,6 +500,7 @@ class populator:
 
     def database_insertion(self, table, entries):
         with self.engine.begin() as connection:
-            query = str(connection.execute(table.insert().values(**entries)))
+            connection.execute(table.insert().values(**entries))
             self.job_progress.advance(self.inserting_data)
             self.set_progress()
+            self.current_progress += 1

@@ -2,9 +2,12 @@ from populate import populator
 from decouple import config
 from faker import Faker
 import data
+from rich.traceback import install
 
 
 def main():
+    install(max_frames=2)
+    
     db_host = config("DB_HOST")
     db_user = config("DB_USER")
     db_password = config("DB_PASSWORD")
