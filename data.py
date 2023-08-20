@@ -1,27 +1,32 @@
 import faker
 import uuid
 
-# TODO: Modify the below values based on the requirements
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ┃ Customize Tool Behavior
+# ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# * The `number_of_fields` variable determines the number of rows to insert
-# * The `excluded_tables` list should have the tables to not insert data into
-# * The `tables_to_fill` list should have the tables to insert data into
-# ? If empty, all tables in the database are filled
-# * Shows the database relation graph after the insertion
-# * Contains the fields that needs special values
-# ? Name of the field, it can be Null if it can be ignored
-# ? type of the field, it can be Null if it can be ignored
-# ? The Table in which the field is, can be Null to apply same to all Table
-# ? Choices of values, a value will be randomly chosen from this list
+# ➤ `number_of_fields`: Determines the number of rows to insert.
 
-# ! Note:
-# ! The `tables_to_fill` list is preferred over the `excluded_tables`
-# ! list hence, if both exists `excluded_tables` will be ignored
+# ➤ `excluded_tables`: A list of tables to exclude from data insertion.
+
+# ➤ `tables_to_fill`: A list of tables to insert data into. If empty, all tables in the database will be filled.
+
+# ➤ `graph`: Displays the graph after data insertion.
+
+# ➤ `field`: Contains instructions for identifying and filling columns.
+#     ➜ `Field Name`: The name of the field.
+#     ➜ `Field Type`: The type of the field.
+#     ➜ `Table Name`: The name of the table where the field is located.
+#     ➜ `Identification Method`: Instructions for identifying the field.
+#     ➜ `Value Generation`: Instructions for generating values for the field.
+
+# Feel free to adjust these configurations based on your specific requirements.
+
 
 fake = faker.Faker()
-number_of_fields = 1
+number_of_fields = 100
 excluded_tables = ["system_setting"]
-tables_to_fill = ["role"]
+tables_to_fill = []
 graph = False
 
 fields = [
