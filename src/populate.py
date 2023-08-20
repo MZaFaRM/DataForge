@@ -19,9 +19,24 @@ from sqlalchemy_utils import has_unique_index
 from rich import print
 
 
-class populator:
-    # The populator class is a Python class that populates a MySQL database with fake data based on the
-    # table relations and column data types.
+class DatabasePopulator:
+    """
+    The `DatabasePopulator` class is used to populate a database with random data. It uses the SQLAlchemy library to
+    connect to a database and populate it with random data using `Faker`. It can be used to populate a database with random
+    data for testing purposes or to populate a database with random data for a demo.
+
+    Parameters:
+        - `user` (str): The username of the database user.
+        - `password` (str): The password of the database user.
+        - `host` (str): The host name or IP address of the database server.
+        - `database` (str): The name of the database to connect to.
+        - `rows` (int): The number of rows to insert into each table.
+        - `excluded_tables` (list): A list of table names to exclude from inheritance relations analysis.
+        - `tables_to_fill` (list): A list of table names to fill with data. If empty, all tables in the database will be filled.
+        - `graph` (bool): Determines whether to display the graph after data insertion.
+        - `special_fields` (list of dict): Contains instructions for identifying and filling columns.
+    """
+
     def __init__(
         self,
         user: str,
@@ -34,9 +49,11 @@ class populator:
         graph: bool = True,
         special_fields: list[dict] = None,
     ) -> None:
+        
         db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
         self.completed_tables_list = []
         self.special_fields = special_fields
+
         self.current_progress = 0
 
         self.engine = create_engine(db_url, echo=False)
@@ -45,44 +62,63 @@ class populator:
         tables_to_fill = tables_to_fill or inspector.get_table_names()
         total_len = len(tables_to_fill) - len(excluded_tables)
 
+        # Defines the layout of the CLI
         self.layout = self.get_layout(total_len)
 
         with Live(self.layout, refresh_per_second=10, screen=True):
+            # Initializes the progress bar
             self.make_jobs(total_len)
+            
+            # Identifies inheritance relations between tables
             self.make_relations(
                 inspector=inspector,
                 tables_to_fill=tables_to_fill,
                 excluded_tables=excluded_tables,
             )
 
+            # Arranges inheritance relations in a directed graph
             self.arrange_graph()
+            
+            # Populates the database with random data
             self.fill_table(inspector=inspector)
-            time.sleep(2)
+            
+            
+            if graph:
+                self.draw_graph()
+            else:
+                time.sleep(2)
 
-        with open("banner.txt", encoding="utf-8") as f:
+        self.show_end_banner()
+
+    def show_end_banner(self):
+        with open("assets/banner.txt", encoding="utf-8") as f:
             banner = f.readlines()
 
         print(*banner)
-        
-        success = random.choice([
-            "Voila!",
-            "Wow!",
-            "Ta-da!",
-            "Yay!",
-            "Oops!",
-            "Woah!",
-            "Cool!",
-            "Bam!",
-            "Eureka!",
-            "Aha!",
-            "Hooray!",
-            "Oof!",
-        ])
-        
-        print(Align(f"[yellow]{success}[/] smoothly inserted {self.current_progress} rows.", align="right"))
-        
-        if graph:
-            self.draw_graph()
+
+        success = random.choice(
+            [
+                "Voila!",
+                "Wow!",
+                "Ta-da!",
+                "Yay!",
+                "Oops!",
+                "Woah!",
+                "Cool!",
+                "Bam!",
+                "Eureka!",
+                "Aha!",
+                "Hooray!",
+                "Oof!",
+            ]
+        )
+
+        print(
+            Align(
+                f"[yellow]{success}[/] smoothly inserted {self.current_progress} rows.",
+                align="right",
+            )
+        )
 
     def get_layout(self, tables_to_fill):
         self.make_jobs(tables_to_fill)
@@ -165,7 +201,7 @@ class populator:
         return self.query_grid
 
     def make_header(self) -> Panel:
-        grid = self.get_banner("banner.txt")
+        grid = self.get_banner("assets/banner.txt")
         grid.add_row(
             "From [b link=https://github.com/MZaFaRM/]Muhammed Zafar[/]",
         )
