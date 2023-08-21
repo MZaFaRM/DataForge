@@ -2,7 +2,7 @@
 
 ![Data Forge Logo](https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1)
 
-DataForge is a Python tool designed to assist in generating and inserting realistic test data into your database. It aims to simplify tasks like detecting foreign key relations, with a focus on user-friendly design and efficiency. Whether you're a web developer, AI enthusiast, or tech enthusiast, you may find DataForge to be a useful addition to your toolkit.
+DataForge is a Python tool designed to assist in generating and inserting realistic test data into your database. It aims to simplify tasks like detecting foreign key relations, with a focus on user-friendly design and efficiency. it is a valuable addition to any toolkit.
 
 ## 🚀 Key Features
 
