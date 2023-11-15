@@ -318,15 +318,13 @@ class DatabasePopulator:
         The function arranges identified inheritance relations in a directed graph and orders them
         topologically.
         """
-        task = self.job_progress.advance(self.identifying_relations)
-
         graph = nx.DiGraph()
 
-        step = 60 / len(self.inheritance_relations)
         for table, inherited_tables in self.inheritance_relations.items():
             if inherited_tables:
                 for inherited_table in inherited_tables:
-                    graph.add_edge(inherited_table, table)
+                    if table != inherited_table:  # Skip self-references
+                        graph.add_edge(inherited_table, table)
             else:
                 graph.add_node(table)
 
