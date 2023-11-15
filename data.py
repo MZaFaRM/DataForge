@@ -1,3 +1,4 @@
+import datetime
 import faker
 import uuid
 
@@ -27,7 +28,7 @@ fake = faker.Faker()
 number_of_fields = 1
 excluded_tables = ["system_setting"]
 tables_to_fill = ["user"]
-graph = False
+graph = True
 
 fields = [
     {
