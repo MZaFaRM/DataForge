@@ -17,7 +17,7 @@ from rich.table import Table
 from sqlalchemy import create_engine, inspect
 from sqlalchemy_utils import has_unique_index
 from rich import print
-
+import keyboard
 
 class DatabasePopulator:
     """
@@ -49,7 +49,6 @@ class DatabasePopulator:
         graph: bool = True,
         special_fields: list[dict] = None,
     ) -> None:
-        
         db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
 
         self.completed_tables_list = []
@@ -60,7 +59,7 @@ class DatabasePopulator:
         self.engine = create_engine(db_url, echo=False)
         self.rows = rows
         inspector = inspect(self.engine)
-        
+
         # If no tables are specified, fill all tables in the database
         # Otherwise, fill the specified tables
         tables_to_fill = tables_to_fill or inspector.get_table_names()
@@ -88,7 +87,7 @@ class DatabasePopulator:
             )
 
             # Arranges inheritance relations in a directed graph
-            self.arrange_graph()
+            self.arrange_graph(tables_to_fill=tables_to_fill)
 
             # Populates the database with random data
             self.fill_table(inspector=inspector)
@@ -105,13 +104,15 @@ class DatabasePopulator:
             banner = f.readlines()
 
         print()
-        [ print(
-            Align(
-                bane.strip(),
-                align="center",
+        [
+            print(
+                Align(
+                    bane.strip(),
+                    align="center",
+                )
             )
-            
-        ) for bane in banner ]
+            for bane in banner
+        ]
 
         success = random.choice(
             [
@@ -313,13 +314,14 @@ class DatabasePopulator:
         plt.axis("off")
         plt.show()
 
-    def arrange_graph(self):
+    def arrange_graph(self, tables_to_fill):
         """
         The function arranges identified inheritance relations in a directed graph and orders them
-        topologically.
+        topologically. It involves the user in resolving circular dependencies.
         """
         graph = nx.DiGraph()
 
+        # Populate the graph
         for table, inherited_tables in self.inheritance_relations.items():
             if inherited_tables:
                 for inherited_table in inherited_tables:
@@ -330,10 +332,17 @@ class DatabasePopulator:
 
             self.job_progress.advance(self.identifying_relations)
 
-        ordered_tables = list(nx.topological_sort(graph))
+        # Detect cycles
+        try:
+            ordered_tables = list(nx.topological_sort(graph))
+        except nx.NetworkXUnfeasible as e:
+            cycles = list(nx.simple_cycles(graph))
+            ordered_tables = self.resolve_cycles_with_user_input(
+                cycles=cycles, tables_to_fill=tables_to_fill
+            )
 
+        # Order the tables based on topological sort or user resolution
         ordered_inheritance_relations = OrderedDict()
-
         for table in ordered_tables:
             if table in self.inheritance_relations:
                 ordered_inheritance_relations[table] = self.inheritance_relations[table]
@@ -343,9 +352,67 @@ class DatabasePopulator:
         self.inheritance_relations = ordered_inheritance_relations
         self.job_progress.advance(self.identifying_relations)
 
+    def resolve_cycles_with_user_input(self, cycles, tables_to_fill):
+        """
+        Ask the user to resolve the detected cycles and return the adjusted order of tables.
+        """
+        indexed_list = self.get_indexed_list(cycles)
+
+        self.layout["body"].update(
+            Panel(
+                Align.center("\n".join(indexed_list)),
+                highlight=True,
+                padding=1,
+                expand=True,
+                title="[yellow b]WARNING",
+            )
+        )
+        
+        
+
+        # Implement user interaction here to resolve cycles
+        # This could be as simple as asking the user to provide a new order for the tables
+        # or more complex logic based on your application's needs.
+
+        # For simplicity, let's assume user provides a new order of tables
+        user_ordered_tables = input(
+            "Please provide a new order of tables (comma-separated): "
+        )
+        return user_ordered_tables.split(",")
+
+    def generate_circular_dependency_list(self, cycles):
+        """
+        Generate a formatted list of circular dependencies for user interaction.
+
+        Args:
+            cycles (list): A list of lists, where each inner list represents a cycle of dependencies.
+
+        Returns:
+            list: A formatted list with circular dependencies and instructions.
+        """
+        # Find the table with the most circular dependencies
+        cyclic_tables = list(max(cycles, key=len))
+
+        # Highlight the first table
+        cyclic_tables[0] = f"[black on white]{cyclic_tables[0]}[/]"
+
+        # Create the indexed list with proper formatting
+        indexed_list = [
+            f"{index}. {item}" for index, item in enumerate(cyclic_tables, start=1)
+        ]
+
+        # Insert headers and instructions
+        indexed_list.insert(0, "[b red]Circular dependencies detected in the following tables,")
+        indexed_list.insert(1, "provide an order to fill:[/b red]\n")
+        indexed_list.insert(2, "[i yellow]Use arrow keys to navigate, `+` to move an item up the list,")
+        indexed_list.insert(3, "`-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n")
+
+        return indexed_list
+
+
     def populate_fields(self, column, table):
         """
-        The function `populate_fields` populates a 
+        The function `populate_fields` populates a
         column with a value based on the column's name, type, and
         table name.
         """
@@ -411,7 +478,11 @@ class DatabasePopulator:
             count -= 1
             if count <= 0:
                 raise ValueError(
-                    f"I can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
+                    (
+                        f"I can't find a unique value "
+                        f"to insert into column '{column.name}' in "
+                        f"table '{table.name}'"
+                    )
                 )
 
         return value
@@ -429,13 +500,13 @@ class DatabasePopulator:
 
             conn = self.engine.connect()
             s = sqlalchemy.select(table.c[column.name])
-            
+
             # Cache the column's unique values
             self.cached_unique_column_values[column] = {
                 row[0] for row in conn.execute(s).fetchall()
             }
             conn.close()
-            
+
             return self.cached_unique_column_values[column]
         return set()
 
@@ -443,7 +514,7 @@ class DatabasePopulator:
         """
         The function `get_value` returns a value for a column in a table.
         """
-        # It first checks if the column is unique, if it is, it fetches a 
+        # It first checks if the column is unique, if it is, it fetches a
         # set of unique values to insert
         self.existing_values = self.get_unique_column_values(
             column=column, unique_columns=unique_columns, table=table
@@ -451,19 +522,23 @@ class DatabasePopulator:
         # it calls the `process_foreign`
         # function to check if the column is a foreign key
         # if it is, it returns a value from the related table
-        value = self.process_foreign(
-            column=column,
-            foreign_columns=foreign_columns,
-            table=table,
-        )
-        if value is not None:
+        if None is not (
+            value := self.process_foreign(
+                column=column,
+                foreign_columns=foreign_columns,
+                table=table,
+            )
+        ):
             return value
         # if the column is not a foreign key, it calls the `handle_column_population`
         # function to populate the column with a value based on the definition from
         # the `data.py` file
-        value = self.handle_column_population(table=table, column=column)
-        if value is not None:
+        elif None is not (
+            value := self.handle_column_population(table=table, column=column)
+        ):
             return value
+        elif column.nullable:
+            return None
         else:
             raise NotImplementedError(
                 "I have no idea what value to assign "
@@ -475,7 +550,7 @@ class DatabasePopulator:
         """
         The function `get_related_table_fields` returns a set of values from a related table
         """
-        # desc is a tuple containing the 
+        # desc is a tuple containing the
         # (name of the column, the name of the related table)
         desc = foreign_columns[column.name]
         # If the related table fields have already been cached, return them
@@ -577,10 +652,10 @@ class DatabasePopulator:
 
             # Update the table panel with the current table being filled's name
             self.handle_table_panel(self.inheritance_relations_list)
-            
+
             # Call the `handle_database_insertion` function to fill the current table
             self.handle_database_insertion(table_name, inspector)
-            
+
             # Logic for how to display the table after it has been filled
             self.inheritance_relations_list.remove(f"[yellow]{table_name}")
             self.completed_tables_list.append(f"[green]{table_name}")
