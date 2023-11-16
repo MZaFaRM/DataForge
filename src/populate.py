@@ -88,7 +88,7 @@ class DatabasePopulator:
             )
 
             # Arranges inheritance relations in a directed graph
-            self.arrange_graph(tables_to_fill=tables_to_fill)
+            self.arrange_graph()
 
             # Populates the database with random data
             self.fill_table(inspector=inspector)
@@ -315,7 +315,7 @@ class DatabasePopulator:
         plt.axis("off")
         plt.show()
 
-    def arrange_graph(self, tables_to_fill):
+    def arrange_graph(self):
         """
         The function arranges identified inheritance relations in a directed graph and orders them
         topologically. It involves the user in resolving circular dependencies.
@@ -346,10 +346,14 @@ class DatabasePopulator:
                 if inherited_tables:
                     for inherited_table in inherited_tables:
                         if table != inherited_table:  # Skip self-references
-                            if ordered_cycles.index(table) < ordered_cycles.index(
-                                inherited_table
+                            if (
+                                table in ordered_cycles
+                                and inherited_table in ordered_cycles
+                                and ordered_cycles.index(table)
+                                > ordered_cycles.index(inherited_table)
                             ):
-                                graph.add_edge(inherited_table, table)
+                                continue
+                            graph.add_edge(inherited_table, table)
                 else:
                     graph.add_node(table)
 
@@ -599,7 +603,8 @@ class DatabasePopulator:
         else:
             raise NotImplementedError(
                 "I have no idea what value to assign "
-                f"to the field '{column.name}' in '{table}'. "
+                f"to the field '{column.name}' of type ",
+                f"{column.type} in '{table}'. "
                 "Maybe updating my `data.py` will help?"
             )
 
