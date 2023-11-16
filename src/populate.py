@@ -19,6 +19,7 @@ from sqlalchemy_utils import has_unique_index
 from rich import print
 import keyboard
 
+
 class DatabasePopulator:
     """
     The `DatabasePopulator` class is used to populate a database with random data. It uses the SQLAlchemy library to
@@ -320,7 +321,6 @@ class DatabasePopulator:
         topologically. It involves the user in resolving circular dependencies.
         """
         graph = nx.DiGraph()
-
         # Populate the graph
         for table, inherited_tables in self.inheritance_relations.items():
             if inherited_tables:
@@ -337,9 +337,24 @@ class DatabasePopulator:
             ordered_tables = list(nx.topological_sort(graph))
         except nx.NetworkXUnfeasible as e:
             cycles = list(nx.simple_cycles(graph))
-            ordered_tables = self.resolve_cycles_with_user_input(
-                cycles=cycles, tables_to_fill=tables_to_fill
-            )
+            ordered_cycles = self.resolve_cycles_with_user_input(cycles=cycles)
+
+            graph = nx.DiGraph()
+
+            # Populate the graph
+            for table, inherited_tables in self.inheritance_relations.items():
+                if inherited_tables:
+                    for inherited_table in inherited_tables:
+                        if table != inherited_table:  # Skip self-references
+                            if ordered_cycles.index(table) < ordered_cycles.index(
+                                inherited_table
+                            ):
+                                graph.add_edge(inherited_table, table)
+                else:
+                    graph.add_node(table)
+
+                self.job_progress.advance(self.identifying_relations)
+            ordered_tables = list(nx.topological_sort(graph))
 
         # Order the tables based on topological sort or user resolution
         ordered_inheritance_relations = OrderedDict()
@@ -352,12 +367,43 @@ class DatabasePopulator:
         self.inheritance_relations = ordered_inheritance_relations
         self.job_progress.advance(self.identifying_relations)
 
-    def resolve_cycles_with_user_input(self, cycles, tables_to_fill):
+    def resolve_cycles_with_user_input(self, cycles):
         """
         Ask the user to resolve the detected cycles and return the adjusted order of tables.
         """
-        indexed_list = self.get_indexed_list(cycles)
+        current_index = 0
+        cycles = list({item for cycle in cycles for item in cycle})
 
+        self.generate_circular_dependency_list(cycles, current_index)
+        while True:
+            key = keyboard.read_event(suppress=False)
+            if key.event_type == "down":
+                key = key.name
+                if key == "up":
+                    if current_index > 0:
+                        current_index -= 1
+                        self.generate_circular_dependency_list(cycles, current_index)
+                elif key == "down":
+                    if current_index < len(cycles) - 1:
+                        current_index += 1
+                        self.generate_circular_dependency_list(cycles, current_index)
+                elif key in ["+", "="]:
+                    cycles, current_index = self.update_list_based_on_user_input(
+                        cycles, 1, current_index
+                    )
+                elif key in ["-", "_"]:
+                    cycles, current_index = self.update_list_based_on_user_input(
+                        cycles, -1, current_index
+                    )
+
+                elif key == "enter":
+                    # Handle 'Enter' key press (e.g., save the selected order)
+                    return cycles
+                elif key == "esc":
+                    # Handle 'Esc' key press (e.g., exit or cancel)
+                    break
+
+    def display_list(self, indexed_list):
         self.layout["body"].update(
             Panel(
                 Align.center("\n".join(indexed_list)),
@@ -367,48 +413,59 @@ class DatabasePopulator:
                 title="[yellow b]WARNING",
             )
         )
-        
-        
 
-        # Implement user interaction here to resolve cycles
-        # This could be as simple as asking the user to provide a new order for the tables
-        # or more complex logic based on your application's needs.
+    def update_list_based_on_user_input(self, cycles, step, current_index):
+        if step == -1:
+            if (current_index + 1) < len(cycles):
+                cycles[current_index], cycles[current_index + 1] = (
+                    cycles[current_index + 1],
+                    cycles[current_index],
+                )
+            current_index += 1
+        elif step == 1:
+            if current_index > 0:
+                cycles[current_index], cycles[current_index - 1] = (
+                    cycles[current_index - 1],
+                    cycles[current_index],
+                )
+            current_index -= 1
+        self.generate_circular_dependency_list(cycles, current_index)
+        return cycles, current_index
 
-        # For simplicity, let's assume user provides a new order of tables
-        user_ordered_tables = input(
-            "Please provide a new order of tables (comma-separated): "
-        )
-        return user_ordered_tables.split(",")
-
-    def generate_circular_dependency_list(self, cycles):
+    def generate_circular_dependency_list(self, cycles, current_index):
         """
         Generate a formatted list of circular dependencies for user interaction.
 
         Args:
             cycles (list): A list of lists, where each inner list represents a cycle of dependencies.
+            and prints a formatted list with circular dependencies and instructions.
 
         Returns:
-            list: A formatted list with circular dependencies and instructions.
+            None
         """
-        # Find the table with the most circular dependencies
-        cyclic_tables = list(max(cycles, key=len))
+        cycles = cycles.copy()
 
         # Highlight the first table
-        cyclic_tables[0] = f"[black on white]{cyclic_tables[0]}[/]"
+        cycles[current_index] = f"[black on white]{cycles[current_index]}[/]"
 
         # Create the indexed list with proper formatting
         indexed_list = [
-            f"{index}. {item}" for index, item in enumerate(cyclic_tables, start=1)
+            f"{index}. {item}" for index, item in enumerate(cycles, start=1)
         ]
 
         # Insert headers and instructions
-        indexed_list.insert(0, "[b red]Circular dependencies detected in the following tables,")
+        indexed_list.insert(
+            0, "[b red]Circular dependencies detected in the following tables,"
+        )
         indexed_list.insert(1, "provide an order to fill:[/b red]\n")
-        indexed_list.insert(2, "[i yellow]Use arrow keys to navigate, `+` to move an item up the list,")
-        indexed_list.insert(3, "`-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n")
+        indexed_list.insert(
+            2, "[i yellow]Use arrow keys to navigate, `+` to move an item up the list,"
+        )
+        indexed_list.insert(
+            3, "`-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n"
+        )
 
-        return indexed_list
-
+        self.display_list(indexed_list)
 
     def populate_fields(self, column, table):
         """
