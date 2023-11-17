@@ -1,9 +1,10 @@
 import contextlib
 import random
 import re
-from collections import OrderedDict
 import time
+from collections import OrderedDict
 
+import keyboard
 import matplotlib.pyplot as plt
 import networkx as nx
 import sqlalchemy
@@ -16,8 +17,10 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from sqlalchemy import create_engine, inspect
 from sqlalchemy_utils import has_unique_index
-from rich import print
-import keyboard
+
+from .enums import Nothing
+
+Nan = Nothing.Nan.value
 
 
 class DatabasePopulator:
@@ -322,6 +325,7 @@ class DatabasePopulator:
         """
         graph = nx.DiGraph()
         # Populate the graph
+        h = self.inheritance_relations.items()
         for table, inherited_tables in self.inheritance_relations.items():
             if inherited_tables:
                 for inherited_table in inherited_tables:
@@ -340,7 +344,6 @@ class DatabasePopulator:
             ordered_cycles = self.resolve_cycles_with_user_input(cycles=cycles)
 
             graph = nx.DiGraph()
-
             # Populate the graph
             for table, inherited_tables in self.inheritance_relations.items():
                 if inherited_tables:
@@ -350,14 +353,13 @@ class DatabasePopulator:
                                 table in ordered_cycles
                                 and inherited_table in ordered_cycles
                                 and ordered_cycles.index(table)
-                                > ordered_cycles.index(inherited_table)
+                                < ordered_cycles.index(inherited_table)
                             ):
                                 continue
                             graph.add_edge(inherited_table, table)
                 else:
                     graph.add_node(table)
 
-                self.job_progress.advance(self.identifying_relations)
             ordered_tables = list(nx.topological_sort(graph))
 
         # Order the tables based on topological sort or user resolution
@@ -425,14 +427,14 @@ class DatabasePopulator:
                     cycles[current_index + 1],
                     cycles[current_index],
                 )
-            current_index += 1
+                current_index += 1
         elif step == 1:
             if current_index > 0:
                 cycles[current_index], cycles[current_index - 1] = (
                     cycles[current_index - 1],
                     cycles[current_index],
                 )
-            current_index -= 1
+                current_index -= 1
         self.generate_circular_dependency_list(cycles, current_index)
         return cycles, current_index
 
@@ -459,14 +461,12 @@ class DatabasePopulator:
 
         # Insert headers and instructions
         indexed_list.insert(
-            0, "[b red]Circular dependencies detected in the following tables,"
-        )
-        indexed_list.insert(1, "provide an order to fill:[/b red]\n")
-        indexed_list.insert(
-            2, "[i yellow]Use arrow keys to navigate, `+` to move an item up the list,"
+            0,
+            "[b red]Circular dependencies detected in the following tables, provide an order to fill:[/b red]\n",
         )
         indexed_list.insert(
-            3, "`-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n"
+            1,
+            "[i yellow]Use arrow keys to navigate, `+` to move an item up the list, `-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n",
         )
 
         self.display_list(indexed_list)
@@ -538,6 +538,8 @@ class DatabasePopulator:
             value = self.populate_fields(column, table)
             count -= 1
             if count <= 0:
+                if column.nullable:
+                    return None
                 raise ValueError(
                     (
                         f"I can't find a unique value "
@@ -575,15 +577,20 @@ class DatabasePopulator:
         """
         The function `get_value` returns a value for a column in a table.
         """
+        # Check if the column is nullable with a 1 in 300 chance of returning None
+        if column.nullable and random.random() < 1 / 300:
+            return None
+
         # It first checks if the column is unique, if it is, it fetches a
         # set of unique values to insert
+
         self.existing_values = self.get_unique_column_values(
             column=column, unique_columns=unique_columns, table=table
         )
         # it calls the `process_foreign`
         # function to check if the column is a foreign key
         # if it is, it returns a value from the related table
-        if None is not (
+        if Nan is not (
             value := self.process_foreign(
                 column=column,
                 foreign_columns=foreign_columns,
@@ -594,18 +601,16 @@ class DatabasePopulator:
         # if the column is not a foreign key, it calls the `handle_column_population`
         # function to populate the column with a value based on the definition from
         # the `data.py` file
-        elif None is not (
+        elif Nan is not (
             value := self.handle_column_population(table=table, column=column)
         ):
             return value
-        elif column.nullable:
-            return None
         else:
             raise NotImplementedError(
                 "I have no idea what value to assign "
                 f"to the field '{column.name}' of type ",
                 f"{column.type} in '{table}'. "
-                "Maybe updating my `data.py` will help?"
+                "Maybe updating my `data.py` will help?",
             )
 
     def get_related_table_fields(self, column, foreign_columns):
@@ -641,17 +646,22 @@ class DatabasePopulator:
         it returns a value from the related table.
         """
         if column.name not in foreign_columns:
-            return None
+            return Nan
         # Gets the related table fields from the `get_related_table_fields` function
         related_table_fields = self.get_related_table_fields(column, foreign_columns)
 
         # self.existing_values only gets populated if the column only accepts to unique values
         if selectable_fields := related_table_fields - self.existing_values:
             return random.choice(list(selectable_fields))
-        else:
-            raise ValueError(
-                f"Can't find a unique value to insert into column '{column.name}' in table '{table.name}'"
+        elif column.nullable:
+            return None
+        raise ValueError(
+            (
+                f"I can't find a unique value "
+                f"to insert into column '{column.name}' in "
+                f"table '{table.name}'"
             )
+        )
 
     def get_unique_columns(self, table):
         return [column.name for column in table.columns if has_unique_index(column)]
