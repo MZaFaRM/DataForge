@@ -41,6 +41,7 @@ def main():
         tables_to_fill=data.tables_to_fill,  # List of tables to insert data into
         graph=data.graph,  # Show table relation graph (True/False)
         special_fields=data.fields,  # Instructions for identifying and filling columns
+        special_foreign_fields=data.special_foreign_fields,  # Instructions for identifying and filling columns
     )
 
 
