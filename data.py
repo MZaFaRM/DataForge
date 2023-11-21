@@ -27,7 +27,7 @@ import uuid
 fake = faker.Faker()
 number_of_fields = 1
 excluded_tables = ["system_setting"]
-tables_to_fill = ["user"]
+tables_to_fill = []
 graph = True
 
 fields = [
@@ -81,7 +81,18 @@ fields = [
         "table": None,
         "generator": lambda: fake.word().capitalize(),
     },
-    {"name": None, "type": "date", "table": None, "generator": lambda: fake.date()},
+    {
+        "name": None,
+        "type": "float",
+        "table": None,
+        "generator": lambda: fake.random_element(elements=(1.0, 10.0)),
+    },
+    {
+        "name": None,
+        "type": "date",
+        "table": None,
+        "generator": lambda: fake.date(),
+    },
     {
         "name": None,
         "type": "datetime",
