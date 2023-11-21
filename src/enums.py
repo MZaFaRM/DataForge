@@ -1,4 +1,4 @@
 import enum
 
 class Nothing(enum.Enum):
-    Nan = "This operation returned nothing"
+    Nada = "This operation returned nothing"

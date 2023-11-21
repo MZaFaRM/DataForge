@@ -20,7 +20,7 @@ from sqlalchemy_utils import has_unique_index
 
 from .enums import Nothing
 
-Nan = Nothing.Nan.value
+Nada = Nothing.Nada.value
 
 
 class DatabasePopulator:
@@ -317,6 +317,20 @@ class DatabasePopulator:
         plt.title("Database Inheritance Relationships")
         plt.axis("off")
         plt.show()
+        
+    def remove_cycles(self, graph):
+        try:
+            # Find a cycle in the graph
+            cycle = nx.find_cycle(graph, orientation='original')
+        except nx.NetworkXNoCycle:
+            # No cycle found, return the graph as is
+            return graph
+        
+        # If a cycle is found, remove an edge from the cycle
+        graph.remove_edge(*cycle[0][:2])
+        
+        # Recursively call remove_cycles to remove other cycles
+        return self.remove_cycles(graph)
 
     def arrange_graph(self):
         """
@@ -325,44 +339,27 @@ class DatabasePopulator:
         """
         graph = nx.DiGraph()
         # Populate the graph
-        h = self.inheritance_relations.items()
         for table, inherited_tables in self.inheritance_relations.items():
             if inherited_tables:
                 for inherited_table in inherited_tables:
                     if table != inherited_table:  # Skip self-references
-                        graph.add_edge(inherited_table, table)
+                        adjacency = dict(graph.adjacency())
+                        if table in adjacency:
+                            adjacency = adjacency[table]
+                            if inherited_table not in adjacency:
+                                graph.add_edge(inherited_table, table)
+                        else:
+                            graph.add_edge(inherited_table, table)
+                            
             else:
                 graph.add_node(table)
 
             self.job_progress.advance(self.identifying_relations)
 
-        # Detect cycles
-        try:
-            ordered_tables = list(nx.topological_sort(graph))
-        except nx.NetworkXUnfeasible as e:
-            cycles = list(nx.simple_cycles(graph))
-            ordered_cycles = self.resolve_cycles_with_user_input(cycles=cycles)
-
-            graph = nx.DiGraph()
-            # Populate the graph
-            for table, inherited_tables in self.inheritance_relations.items():
-                if inherited_tables:
-                    for inherited_table in inherited_tables:
-                        if table != inherited_table:  # Skip self-references
-                            if (
-                                table in ordered_cycles
-                                and inherited_table in ordered_cycles
-                                and ordered_cycles.index(table)
-                                < ordered_cycles.index(inherited_table)
-                            ):
-                                continue
-                            graph.add_edge(inherited_table, table)
-                else:
-                    graph.add_node(table)
-
-            ordered_tables = list(nx.topological_sort(graph))
-
-        # Order the tables based on topological sort or user resolution
+        graph = self.remove_cycles(graph)
+        ordered_tables = list(nx.topological_sort(graph))
+            
+        # Order the tables based on topological sort
         ordered_inheritance_relations = OrderedDict()
         for table in ordered_tables:
             if table in self.inheritance_relations:
@@ -372,104 +369,6 @@ class DatabasePopulator:
 
         self.inheritance_relations = ordered_inheritance_relations
         self.job_progress.advance(self.identifying_relations)
-
-    def resolve_cycles_with_user_input(self, cycles):
-        """
-        Ask the user to resolve the detected cycles and return the adjusted order of tables.
-        """
-        current_index = 0
-        cycles = list({item for cycle in cycles for item in cycle})
-
-        self.generate_circular_dependency_list(cycles, current_index)
-        while True:
-            key = keyboard.read_event(suppress=False)
-            if key.event_type == "down":
-                key = key.name
-                if key == "up":
-                    if current_index > 0:
-                        current_index -= 1
-                        self.generate_circular_dependency_list(cycles, current_index)
-                elif key == "down":
-                    if current_index < len(cycles) - 1:
-                        current_index += 1
-                        self.generate_circular_dependency_list(cycles, current_index)
-                elif key in ["+", "="]:
-                    cycles, current_index = self.update_list_based_on_user_input(
-                        cycles, 1, current_index
-                    )
-                elif key in ["-", "_"]:
-                    cycles, current_index = self.update_list_based_on_user_input(
-                        cycles, -1, current_index
-                    )
-
-                elif key == "enter":
-                    # Handle 'Enter' key press (e.g., save the selected order)
-                    return cycles
-                elif key == "esc":
-                    # Handle 'Esc' key press (e.g., exit or cancel)
-                    break
-
-    def display_list(self, indexed_list):
-        self.layout["body"].update(
-            Panel(
-                Align.center("\n".join(indexed_list)),
-                highlight=True,
-                padding=1,
-                expand=True,
-                title="[yellow b]WARNING",
-            )
-        )
-
-    def update_list_based_on_user_input(self, cycles, step, current_index):
-        if step == -1:
-            if (current_index + 1) < len(cycles):
-                cycles[current_index], cycles[current_index + 1] = (
-                    cycles[current_index + 1],
-                    cycles[current_index],
-                )
-                current_index += 1
-        elif step == 1:
-            if current_index > 0:
-                cycles[current_index], cycles[current_index - 1] = (
-                    cycles[current_index - 1],
-                    cycles[current_index],
-                )
-                current_index -= 1
-        self.generate_circular_dependency_list(cycles, current_index)
-        return cycles, current_index
-
-    def generate_circular_dependency_list(self, cycles, current_index):
-        """
-        Generate a formatted list of circular dependencies for user interaction.
-
-        Args:
-            cycles (list): A list of lists, where each inner list represents a cycle of dependencies.
-            and prints a formatted list with circular dependencies and instructions.
-
-        Returns:
-            None
-        """
-        cycles = cycles.copy()
-
-        # Highlight the first table
-        cycles[current_index] = f"[black on white]{cycles[current_index]}[/]"
-
-        # Create the indexed list with proper formatting
-        indexed_list = [
-            f"{index}. {item}" for index, item in enumerate(cycles, start=1)
-        ]
-
-        # Insert headers and instructions
-        indexed_list.insert(
-            0,
-            "[b red]Circular dependencies detected in the following tables, provide an order to fill:[/b red]\n",
-        )
-        indexed_list.insert(
-            1,
-            "[i yellow]Use arrow keys to navigate, `+` to move an item up the list, `-` to move an item down the list, and `Enter` to save.[/i yellow]\n\n",
-        )
-
-        self.display_list(indexed_list)
 
     def populate_fields(self, column, table):
         """
@@ -590,7 +489,7 @@ class DatabasePopulator:
         # it calls the `process_foreign`
         # function to check if the column is a foreign key
         # if it is, it returns a value from the related table
-        if Nan is not (
+        if Nada is not (
             value := self.process_foreign(
                 column=column,
                 foreign_columns=foreign_columns,
@@ -601,7 +500,7 @@ class DatabasePopulator:
         # if the column is not a foreign key, it calls the `handle_column_population`
         # function to populate the column with a value based on the definition from
         # the `data.py` file
-        elif Nan is not (
+        elif Nada is not (
             value := self.handle_column_population(table=table, column=column)
         ):
             return value
@@ -646,7 +545,7 @@ class DatabasePopulator:
         it returns a value from the related table.
         """
         if column.name not in foreign_columns:
-            return Nan
+            return Nada
         # Gets the related table fields from the `get_related_table_fields` function
         related_table_fields = self.get_related_table_fields(column, foreign_columns)
 
