@@ -52,11 +52,13 @@ class DatabasePopulator:
         tables_to_fill: list = None,
         graph: bool = True,
         special_fields: list[dict] = None,
+        special_foreign_fields: list[dict] = None,
     ) -> None:
         db_url = f"mysql+mysqlconnector://{user}:{password}@{host}/{database}"
 
         self.completed_tables_list = []
         self.special_fields = special_fields
+        self.special_foreign_fields = special_foreign_fields
 
         self.current_progress = 0
 
@@ -317,18 +319,18 @@ class DatabasePopulator:
         plt.title("Database Inheritance Relationships")
         plt.axis("off")
         plt.show()
-        
+
     def remove_cycles(self, graph):
         try:
             # Find a cycle in the graph
-            cycle = nx.find_cycle(graph, orientation='original')
+            cycle = nx.find_cycle(graph, orientation="original")
         except nx.NetworkXNoCycle:
             # No cycle found, return the graph as is
             return graph
-        
+
         # If a cycle is found, remove an edge from the cycle
         graph.remove_edge(*cycle[0][:2])
-        
+
         # Recursively call remove_cycles to remove other cycles
         return self.remove_cycles(graph)
 
@@ -350,7 +352,7 @@ class DatabasePopulator:
                                 graph.add_edge(inherited_table, table)
                         else:
                             graph.add_edge(inherited_table, table)
-                            
+
             else:
                 graph.add_node(table)
 
@@ -358,7 +360,7 @@ class DatabasePopulator:
 
         graph = self.remove_cycles(graph)
         ordered_tables = list(nx.topological_sort(graph))
-            
+
         # Order the tables based on topological sort
         ordered_inheritance_relations = OrderedDict()
         for table in ordered_tables:
@@ -370,13 +372,15 @@ class DatabasePopulator:
         self.inheritance_relations = ordered_inheritance_relations
         self.job_progress.advance(self.identifying_relations)
 
-    def populate_fields(self, column, table):
+    def populate_fields(self, column, table, foreign=False):
         """
         The function `populate_fields` populates a
         column with a value based on the column's name, type, and
         table name.
         """
-        for field in self.special_fields:
+        special_field = self.special_foreign_fields if foreign else self.special_fields
+
+        for field in special_field:
             if (
                 self.compare_column_with(column, field["name"], "name")
                 or self.compare_column_with(column, field["type"], "type")
@@ -399,7 +403,7 @@ class DatabasePopulator:
                     except AttributeError:
                         return value
 
-        return None
+        return Nada
 
     def is_valid_regex(self, pattern):
         try:
@@ -488,7 +492,8 @@ class DatabasePopulator:
         )
         # it calls the `process_foreign`
         # function to check if the column is a foreign key
-        # if it is, it returns a value from the related table
+        # if it is, it returns a value from the related table or from
+        # `special_foreign_fields`
         if Nada is not (
             value := self.process_foreign(
                 column=column,
@@ -546,6 +551,11 @@ class DatabasePopulator:
         """
         if column.name not in foreign_columns:
             return Nada
+
+        if Nada is not (
+            value := self.populate_fields(table=table, column=column, foreign=True)
+        ):
+            return value
         # Gets the related table fields from the `get_related_table_fields` function
         related_table_fields = self.get_related_table_fields(column, foreign_columns)
 

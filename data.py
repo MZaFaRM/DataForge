@@ -14,21 +14,33 @@ import uuid
 
 # ➤ `graph`: Displays the graph after data insertion.
 
-# ➤ `field`: Contains instructions for identifying and filling columns.
+# ➤ `special_foreign_fields`: Contains instructions for identifying and filling foreign referencing columns.
 #     ➜ `Field Name`: The name of the field.
 #     ➜ `Field Type`: The type of the field.
 #     ➜ `Table Name`: The name of the table where the field is located.
-#     ➜ `Identification Method`: Instructions for identifying the field.
 #     ➜ `Value Generation`: Instructions for generating values for the field.
+
+# ➤ `field`: Contains instructions for identifying and filling columns.
+#     ** Keys are similar to `special_foreign_fields` **
+
 
 # Feel free to adjust these configurations based on your specific requirements.
 
 
 fake = faker.Faker()
-number_of_fields = 1
+number_of_fields = 40
 excluded_tables = ["system_setting"]
-tables_to_fill = []
+tables_to_fill = ["user_role_link"]
 graph = True
+
+special_foreign_fields = [
+    {
+        "name": "role_id",
+        "type": None,
+        "table": None,
+        "generator": lambda: "023d36f7-209c-4976-b328-767364758560",
+    }
+]
 
 fields = [
     {
@@ -49,14 +61,23 @@ fields = [
         "table": None,
         "generator": lambda: fake.last_name(),
     },
-    {"name": "name", "type": None, "table": None, "generator": lambda: fake.name()},
+    {
+        "name": "name",
+        "type": None,
+        "table": None,
+        "generator": lambda: fake.name(),
+    },
     {
         "name": "description",
         "type": None,
         "table": None,
         "generator": lambda: fake.sentence(),
     },
-    {"name": "email", "type": None, "table": None, "generator": lambda: fake.email()},
+    {
+        "name": "email", 
+        "type": None, 
+        "table": None, 
+        "generator": lambda: fake.email()},
     {
         "name": "password",
         "type": None,
