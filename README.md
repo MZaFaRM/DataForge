@@ -1,6 +1,6 @@
 # DataForge: Simplify Data Population in Your Database
 
-![Data Forge Logo](https://github.com/MZaFaRM/DataForge/assets/98420006/d7ca0ca1-b958-4f78-82a2-f8b4ad3e4cf1)
+![DataForge Logo](https://github.com/MZaFaRM/DataForge/assets/98420006/c56a2259-51e6-4eee-a384-f73d9261c964)
 
 DataForge is a Python tool designed to assist in generating and inserting realistic test data into your database. It aims to simplify tasks like detecting foreign key relations, with a focus on user-friendly design and efficiency. it is a valuable addition to any toolkit.
 
