@@ -1,6 +1,7 @@
 from src.populate import DatabasePopulator
 from decouple import config
 from rich.traceback import install
+from rich.console import Console
 import data
 
 
@@ -27,22 +28,25 @@ def configure_database():
 
 
 def main():
-    install(max_frames=100)
+    install()
+    console = Console()
+    try:
+        db_host, db_user, db_password, db_database = configure_database()
 
-    db_host, db_user, db_password, db_database = configure_database()
-
-    DatabasePopulator(
-        user=db_user,
-        password=db_password,
-        host=db_host,
-        database=db_database,
-        rows=data.number_of_fields,  # Number of rows to insert
-        excluded_tables=data.excluded_tables,  # List of tables to exclude from insertion
-        tables_to_fill=data.tables_to_fill,  # List of tables to insert data into
-        graph=data.graph,  # Show table relation graph (True/False)
-        special_fields=data.fields,  # Instructions for identifying and filling columns
-        special_foreign_fields=data.special_foreign_fields,  # Instructions for identifying and filling columns
-    )
+        DatabasePopulator(
+            user=db_user,
+            password=db_password,
+            host=db_host,
+            database=db_database,
+            rows=data.number_of_fields,  # Number of rows to insert
+            excluded_tables=data.excluded_tables,  # List of tables to exclude from insertion
+            tables_to_fill=data.tables_to_fill,  # List of tables to insert data into
+            graph=data.graph,  # Show table relation graph (True/False)
+            special_fields=data.fields,  # Instructions for identifying and filling columns
+            special_foreign_fields=data.special_foreign_fields,  # Instructions for identifying and filling columns
+        )
+    except Exception as e:
+        console.print_exception()
 
 
 if __name__ == "__main__":

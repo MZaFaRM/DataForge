@@ -4,7 +4,6 @@ import re
 import time
 from collections import OrderedDict
 
-import keyboard
 import matplotlib.pyplot as plt
 import networkx as nx
 import sqlalchemy
@@ -16,7 +15,9 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from sqlalchemy import create_engine, inspect
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import has_unique_index
+import logging
 
 from .enums import Nothing
 
@@ -39,6 +40,7 @@ class DatabasePopulator:
         - `tables_to_fill` (list): A list of table names to fill with data. If empty, all tables in the database will be filled.
         - `graph` (bool): Determines whether to display the graph after data insertion.
         - `special_fields` (list of dict): Contains instructions for identifying and filling columns.
+        - `special_foreign_fields` (list of dict): Contains instructions for identifying and filling foreign columns.
     """
 
     def __init__(
@@ -94,10 +96,8 @@ class DatabasePopulator:
 
             # Arranges inheritance relations in a directed graph
             self.arrange_graph()
-
-            # Populates the database with random data
             self.fill_table(inspector=inspector)
-
+            
             if graph:
                 self.draw_graph()
             else:
@@ -382,13 +382,29 @@ class DatabasePopulator:
 
         for field in special_field:
             if (
-                self.compare_column_with(column, field["name"], "name")
-                or self.compare_column_with(column, field["type"], "type")
-                and (
-                    True
-                    if (field.get("table") and field["table"] == table.name)
-                    else not field.get("table")
+                (
+                    # field name is given but not type
+                    field.get("name")
+                    and not field.get("type")
+                    and self.compare_column_with(column, field["name"], "name")
                 )
+                or (
+                    # field type is given but not name
+                    field.get("type")
+                    and not field.get("name")
+                    and self.compare_column_with(column, field["type"], "type")
+                )
+                or (
+                    # field type and name is given
+                    field.get("type")
+                    and field.get("name")
+                    and self.compare_column_with(column, field["type"], "type")
+                    and self.compare_column_with(column, field["name"], "name")
+                )
+            ) and (
+                # Whether is table specific
+                not field.get("table")
+                or field["table"] == table.name
             ):
                 # If the generator is a function, call it and return the result
                 value = (
@@ -396,12 +412,15 @@ class DatabasePopulator:
                     if callable(field["generator"])
                     else field["generator"]
                 )
-                # If the value is a string, truncate it to the column's length
-                if value is not None:
-                    try:
-                        return str(value)[: column.type.length]
-                    except AttributeError:
-                        return value
+                # If the value is a string or int, truncate it to the column's length
+                try:
+                    return (
+                        str(value)[: column.type.length]
+                        if type(value) in [str, int]
+                        else value
+                    )
+                except AttributeError:
+                    return value
 
         return Nada
 
@@ -511,10 +530,10 @@ class DatabasePopulator:
             return value
         else:
             raise NotImplementedError(
-                "I have no idea what value to assign "
-                f"to the field '{column.name}' of type ",
-                f"{column.type} in '{table}'. "
-                "Maybe updating my `data.py` will help?",
+                f"I have no idea what value to assign "
+                f"to the field '{column.name}' of type "
+                f"'{column.type}' in '{table}'. "
+                f"Maybe updating my `data.py` will help?"
             )
 
     def get_related_table_fields(self, column, foreign_columns):
